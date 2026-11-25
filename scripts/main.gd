@@ -98,7 +98,10 @@ func _build_ui() -> void:
 	box.add_child(row2)
 	cut_btn = _button(row2, "Couper", _cut)
 	_button(row2, "Feuilles", _toggle_leaves)
-	_button(row2, "Nouvelle pousse", _new_tree)
+	var row3 := HBoxContainer.new()
+	box.add_child(row3)
+	_button(row3, "Nouvel orme", func(): _new_tree(Species.ELM))
+	_button(row3, "Nouveau pin", func(): _new_tree(Species.PINE))
 	var bottom := Control.new()  # marge pour la barre de gestes du téléphone
 	bottom.custom_minimum_size.y = 40 * ui_scale
 	box.add_child(bottom)
@@ -148,8 +151,8 @@ func _toggle_leaves() -> void:
 	_refresh()
 
 
-func _new_tree() -> void:
-	sim.reset(randi())
+func _new_tree(species: Dictionary) -> void:
+	sim.reset(randi(), species)
 	selected = -1
 	layout = sim.layout
 	pending = 0
@@ -170,8 +173,8 @@ func _refresh() -> void:
 		season = "été"
 	elif w >= 37 and w < 50:
 		season = "automne"
-	info.text = "Année %d · semaine %d (%s)\n%d segments · hauteur %d cm" % [
-		sim.week / 52 + 1, w + 1, season, sim.segs.size(), roundi(sim.height() * 100.0)]
+	info.text = "%s · année %d · semaine %d (%s)\n%d segments · hauteur %d cm" % [
+		sim.name, sim.week / 52 + 1, w + 1, season, sim.segs.size(), roundi(sim.height() * 100.0)]
 	target.y = maxf(0.05, sim.height() * 0.45)
 	_update_cam()
 

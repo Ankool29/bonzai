@@ -12,6 +12,8 @@ const DRY := Color(0.72, 0.7, 0.64)     # bois mort
 const LEAF := Color(0.3, 0.55, 0.2)
 const LEAF_AUTUMN := Color(0.85, 0.7, 0.2)
 const LEAF_LEN := 0.02                  # orme : petite feuille ovale (~2 cm)
+const NEEDLE := Color(0.13, 0.33, 0.16)
+const NEEDLE_LEN := 0.035               # pin noir en bonsaï : aiguilles de 3 à 5 cm
 
 
 static func build(sim: TreeSim, highlight: PackedInt32Array, t: float, leaves: bool) -> ArrayMesh:
@@ -65,7 +67,10 @@ static func build(sim: TreeSim, highlight: PackedInt32Array, t: float, leaves: b
 			for v in [p0, p0 + 1, p1, p1, p0 + 1, p1 + 1]:
 				idx.append(v)
 		if leaves and not s.dry:
-			_leaf(s, t, f, weak[i] == 1, marked.has(i), verts, norms, cols, idx)
+			if sim.leaf_years > 0:
+				_needles(s, t, f, d, l, sim.leaf_years, weak[i] == 1, marked.has(i), verts, norms, cols, idx)
+			else:
+				_leaf(s, t, f, weak[i] == 1, marked.has(i), verts, norms, cols, idx)
 	var mesh := ArrayMesh.new()
 	if verts.is_empty():
 		return mesh
@@ -108,3 +113,36 @@ static func _leaf(s: TreeSim.Seg, t: float, f: float, weak: bool, selected: bool
 		cols.append(col)
 	for k in [0, 1, 2, 0, 2, 3]:
 		idx.append(base + k)
+
+
+## Aiguilles de pin : par paires, le long des pousses des dernières années (persistantes).
+static func _needles(s: TreeSim.Seg, t: float, f: float, d: Vector3, l: float, years: int, weak: bool,
+		selected: bool, verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray,
+		idx: PackedInt32Array) -> void:
+	if t - s.born > years * 52:
+		return
+	var col := NEEDLE.lerp(WEAK, 0.6) if weak else NEEDLE
+	if selected:
+		col = SELECTED
+	var a := d.cross(Vector3.UP)
+	if a.length() < 0.01:
+		a = d.cross(Vector3.RIGHT)
+	a = a.normalized()
+	var b := d.cross(a)
+	var pairs := clampi(int(l / 0.004), 1, 6)
+	var nl := NEEDLE_LEN * f
+	for k in pairs:
+		var p := s.start + d * l * (k + 0.5) / pairs
+		var ang := s.phase + k * 2.4
+		for side in [0.0, PI]:
+			var r := a * cos(ang + side) + b * sin(ang + side)
+			var dir := (d * 0.6 + r).normalized()
+			var wv := dir.cross(r).normalized() * 0.0012
+			var base := verts.size()
+			for q in [p - wv, p + wv, p + dir * nl]:
+				verts.append(q)
+				norms.append(r)
+				cols.append(col)
+			idx.append(base)
+			idx.append(base + 1)
+			idx.append(base + 2)
