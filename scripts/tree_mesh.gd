@@ -9,9 +9,12 @@ const BARK := Color(0.45, 0.38, 0.32)
 const SELECTED := Color(1.0, 0.35, 0.2)
 const WEAK := Color(0.8, 0.72, 0.3)     # branche qui s'affaiblit à l'ombre
 const DRY := Color(0.72, 0.7, 0.64)     # bois mort
+const LEAF := Color(0.3, 0.55, 0.2)
+const LEAF_AUTUMN := Color(0.85, 0.7, 0.2)
+const LEAF_LEN := 0.02                  # orme : petite feuille ovale (~2 cm)
 
 
-static func build(sim: TreeSim, highlight: PackedInt32Array, t: float) -> ArrayMesh:
+static func build(sim: TreeSim, highlight: PackedInt32Array, t: float, leaves: bool) -> ArrayMesh:
 	var marked := {}
 	for i in highlight:
 		marked[i] = true
@@ -61,6 +64,8 @@ static func build(sim: TreeSim, highlight: PackedInt32Array, t: float) -> ArrayM
 			var p1 := base + ((k + 1) % SIDES) * 2
 			for v in [p0, p0 + 1, p1, p1, p0 + 1, p1 + 1]:
 				idx.append(v)
+		if leaves and not s.dry:
+			_leaf(s, t, f, weak[i] == 1, marked.has(i), verts, norms, cols, idx)
 	var mesh := ArrayMesh.new()
 	if verts.is_empty():
 		return mesh
@@ -72,3 +77,34 @@ static func build(sim: TreeSim, highlight: PackedInt32Array, t: float) -> ArrayM
 	arr[Mesh.ARRAY_INDEX] = idx
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	return mesh
+
+
+## Feuille de l'orme : une par nœud, seulement sur les pousses de l'année (caduc).
+## Débourre avec la pousse, jaunit en octobre, tombe en novembre.
+static func _leaf(s: TreeSim.Seg, t: float, f: float, weak: bool, selected: bool,
+		verts: PackedVector3Array, norms: PackedVector3Array, cols: PackedColorArray, idx: PackedInt32Array) -> void:
+	if floori(s.born / 52.0) != floori(t / 52.0):
+		return
+	var w := fposmod(t, 52.0)
+	var h := fposmod(sin(s.end.x * 91.3 + s.end.y * 13.7 + s.end.z * 47.1) * 43758.5, 1.0)  # hasard fixe par feuille
+	if w > 44.0 + h * 4.0:  # chute étalée sur novembre
+		return
+	if weak and h < 0.4:  # branche affaiblie : feuillage clairsemé
+		return
+	var col := LEAF.lerp(LEAF_AUTUMN, clampf((w - 40.0) / 5.0, 0.0, 1.0))
+	if weak:
+		col = col.lerp(WEAK, 0.6)
+	if selected:
+		col = SELECTED
+	var n := (Vector3.UP * 0.8 + s.lat_dir * 0.2).normalized()
+	var u := (s.lat_dir - n * s.lat_dir.dot(n)).normalized().rotated(n, (h - 0.5) * 0.8)
+	var v := n.cross(u)
+	var l := LEAF_LEN * f
+	var p := s.end + s.lat_dir * 0.002
+	var base := verts.size()
+	for q in [p, p + u * l * 0.4 + v * l * 0.25, p + u * l, p + u * l * 0.4 - v * l * 0.25]:
+		verts.append(q)
+		norms.append(n)
+		cols.append(col)
+	for k in [0, 1, 2, 0, 2, 3]:
+		idx.append(base + k)
