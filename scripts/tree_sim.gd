@@ -22,6 +22,7 @@ class Seg:
 	var dead := false        # à retirer du tableau
 	var dry := false         # bois mort resté sur l'arbre
 	var dry_week := 0
+	var r0 := 0.0            # épaisseur en début de période animée (0 : né pendant la période)
 	var weak := 0            # étés passés trop à l'ombre
 	var lat_q := 1.0         # qualité du bourgeon axillaire (puis vigueur propre du rameau latéral)
 	var release := 1.0       # bonus des bourgeons de ce nœud après une coupe (levée de dominance)
@@ -81,6 +82,7 @@ var segs: Array[Seg] = []
 var week := 0
 var reserve := 0.0            # vigueur que les racines peuvent fournir (suit la lumière avec retard)
 var layout := 0               # change quand des segments sont retirés (les indices changent)
+var fallen: Array = []        # rameaux morts tombés pendant la période : [début, fin, rayon, séchage, chute]
 var rng := RandomNumberGenerator.new()
 
 
@@ -97,6 +99,13 @@ func reset(seed_value: int = 1, species: Dictionary = Species.ELM) -> void:
 	s.radius = tip_radius
 	_set_lateral(s, Vector3.UP)
 	segs.append(s)
+
+
+## Début d'une période animée : on note les épaisseurs et on vide la liste des rameaux tombés.
+func begin_period() -> void:
+	for s in segs:
+		s.r0 = s.radius
+	fallen.clear()
 
 
 func step_week() -> void:
@@ -185,6 +194,9 @@ func _end_of_year() -> void:
 	for i in range(1, segs.size()):
 		var s := segs[i]
 		if s.dry and not s.dead and not segs[s.parent].dry and s.radius < 0.004 and week - s.dry_week >= 40:
+			for k in subtree(i):
+				var q := segs[k]
+				fallen.append([q.start, q.end, q.radius, float(q.dry_week), float(week)])
 			_kill(i)
 			fell = true
 	if fell:
