@@ -1,6 +1,6 @@
 extends Node
-## Un bonsaï qui pousse et qu'on taille. Rendu pixel art texturé : bois et feuillage texturés
-## (PixelLab), scène rendue en basse résolution (SubViewport) puis agrandie sans lissage.
+## Un bonsaï qui pousse et qu'on taille. Rendu pixel art : écorce procédurale, feuilles PixelLab,
+## aiguilles en géométrie, scène rendue en basse résolution (SubViewport) puis agrandie sans lissage.
 ## Rotation au doigt, pincer pour zoomer.
 
 const TARGET_WIDTH := 360.0    # largeur du rendu en pixels
@@ -9,6 +9,7 @@ const REBUILD_MS := 250        # pendant que le temps défile, l'arbre est recon
 var sim := TreeSim.new()
 var wood_mi := MeshInstance3D.new()
 var leaves_mi := MultiMeshInstance3D.new()
+var needles_mi := MeshInstance3D.new()
 var cam := Camera3D.new()
 var world := Node3D.new()
 var shrink := 4
@@ -65,6 +66,8 @@ func _ready() -> void:
 	world.add_child(sun)
 	world.add_child(wood_mi)
 	world.add_child(leaves_mi)
+	needles_mi.material_override = TreeMesh.needle_material()
+	world.add_child(needles_mi)
 	_add_pot()
 	cam.near = 0.005
 	cam.far = 20.0
@@ -92,17 +95,19 @@ func _add_pot() -> void:
 	pl.size = Vector2(0.3, 0.2)
 	soil.mesh = pl
 	soil.position.y = 0.0005
-	var sm := TreeMesh.bark_material(load("res://textures/soil.png"))
-	sm.set_shader_parameter("use_vertex_color", false)
-	sm.set_shader_parameter("scale", Vector2(3, 2))
+	var sm := ShaderMaterial.new()
+	sm.shader = preload("res://shaders/soil.gdshader")
+	sm.set_shader_parameter("tex", load("res://textures/soil.png"))
+	sm.set_shader_parameter("scale", Vector2(6, 4))
 	soil.material_override = sm
 	world.add_child(soil)
 
 
 func _set_species(species: Dictionary) -> void:
 	sim.reset(randi(), species)
-	wood_mi.material_override = TreeMesh.bark_material(load(sim.bark_tex))
-	leaves_mi.material_override = TreeMesh.foliage_material(load(sim.foliage_tex), sim.foliage_frames)
+	wood_mi.material_override = TreeMesh.bark_material(sim)
+	if sim.foliage_tex != "":
+		leaves_mi.material_override = TreeMesh.foliage_material(load(sim.foliage_tex))
 
 
 func _build_ui() -> void:
@@ -204,6 +209,7 @@ func _refresh() -> void:
 	var built := TreeMesh.build(sim, hl, sim.week + frac, show_leaves)
 	wood_mi.mesh = built[0]
 	leaves_mi.multimesh = built[1]
+	needles_mi.mesh = built[2]
 	last_build = Time.get_ticks_msec()
 	cut_btn.disabled = selected <= 0
 	var w := sim.week % 52

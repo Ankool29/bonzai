@@ -3,10 +3,12 @@ class_name Species
 
 const ELM := {
 	"name": "Orme de Chine",
-	"bark_tex": "res://textures/bark_elm.png",
-	"foliage_tex": "res://textures/leaves_elm.png",
-	"foliage_frames": 3,
-	"foliage_size": 0.03,
+	# écorce grise et lisse, taches orangées (desquamation), fines fissures
+	"bark_colors": [Color(0.55, 0.52, 0.47), Color(0.63, 0.6, 0.55), Color(0.62, 0.45, 0.32), Color(0.33, 0.28, 0.24)],
+	"bark_fleck": 0.15,
+	"bark_fissure": 0.18,
+	"foliage_tex": "res://textures/leaf_elm.png",  # 3 feuilles simples (PixelLab)
+	"foliage_size": 0.016,
 	"internode": 0.018,
 	"alpha": 1.6,
 	"apical": 0.53,
@@ -30,10 +32,11 @@ const ELM := {
 ## forte dominance apicale, aiguilles 3 ans, presque pas de rebourgeonnage sur le vieux bois.
 const PINE := {
 	"name": "Pin noir du Japon",
-	"bark_tex": "res://textures/bark_pine.png",
-	"foliage_tex": "res://textures/needles_pine.png",
-	"foliage_frames": 3,
-	"foliage_size": 0.045,
+	# plaques gris foncé, fissures profondes brun-rouge
+	"bark_colors": [Color(0.38, 0.33, 0.31), Color(0.45, 0.4, 0.37), Color(0.4, 0.34, 0.3), Color(0.36, 0.18, 0.12)],
+	"bark_fleck": 0.0,
+	"bark_fissure": 0.28,
+	"foliage_tex": "",  # aiguilles dessinées en géométrie
 	"internode": 0.02,
 	"alpha": 1.6,
 	"apical": 0.62,
