@@ -1,9 +1,7 @@
 extends Node
-## Un bonsaï qui pousse et qu'on taille. Rendu pixel art : écorce procédurale, feuilles PixelLab ancrées aux nœuds,
-## aiguilles en géométrie, scène rendue en basse résolution (SubViewport) puis agrandie sans lissage.
-## Rotation au doigt, pincer pour zoomer.
+## Un bonsaï qui pousse et qu'on taille. Rendu cel shading en pleine résolution (3 tons nets,
+## contours, ombres portées). Rotation au doigt, pincer pour zoomer.
 
-const TARGET_WIDTH := 360.0    # largeur du rendu en pixels
 const REBUILD_MS := 250        # pendant que le temps défile, l'arbre est reconstruit au plus 4 fois/s
 
 var sim := TreeSim.new()
@@ -12,7 +10,6 @@ var leaves_mi := MeshInstance3D.new()
 var needles_mi := MeshInstance3D.new()
 var cam := Camera3D.new()
 var world := Node3D.new()
-var shrink := 4
 var yaw := 0.6
 var pitch := 0.25
 var dist := 0.35
@@ -37,25 +34,14 @@ var cut_btn: Button
 
 
 func _ready() -> void:
-	var screen := get_viewport().get_visible_rect().size
-	ui_scale = screen.x / 720.0
-	shrink = maxi(1, roundi(screen.x / TARGET_WIDTH))
-	var box := SubViewportContainer.new()
-	box.stretch = true
-	box.stretch_shrink = shrink
-	box.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(box)
-	var vp := SubViewport.new()
-	box.add_child(vp)
-	vp.add_child(world)
+	ui_scale = get_viewport().get_visible_rect().size.x / 720.0
+	add_child(world)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.93, 0.9, 0.84)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.75, 0.75, 0.8)
-	env.ambient_light_energy = 0.6
+	env.ambient_light_color = Color(0.62, 0.66, 0.85)  # ombres bleutées
+	env.ambient_light_energy = 0.55
 	var we := WorldEnvironment.new()
 	we.environment = env
 	world.add_child(we)
@@ -63,10 +49,12 @@ func _ready() -> void:
 	sun.rotation_degrees = Vector3(-55, 35, 0)
 	sun.light_energy = 1.1
 	sun.shadow_enabled = true
+	sun.directional_shadow_max_distance = 3.0  # ombres nettes sur la petite scène
 	world.add_child(sun)
 	world.add_child(wood_mi)
 	world.add_child(leaves_mi)
-	needles_mi.material_override = TreeMesh.needle_material()
+	leaves_mi.material_override = TreeMesh.toon(0)
+	needles_mi.material_override = TreeMesh.toon(0)
 	world.add_child(needles_mi)
 	_add_pot()
 	cam.near = 0.005
@@ -78,36 +66,27 @@ func _ready() -> void:
 	_refresh()
 
 
-## Pot rectangulaire en terre cuite, terre d'akadama texturée.
+## Pot rectangulaire en terre cuite, terre d'akadama en granulés.
 func _add_pot() -> void:
 	var pot := MeshInstance3D.new()
 	var b := BoxMesh.new()
 	b.size = Vector3(0.32, 0.05, 0.22)
 	pot.mesh = b
 	pot.position.y = -0.026
-	var pm := StandardMaterial3D.new()
-	pm.albedo_color = Color(0.5, 0.27, 0.2)
-	pm.roughness = 1.0
-	pot.material_override = pm
+	pot.material_override = TreeMesh.toon(0, Color(0.55, 0.28, 0.2), true)
 	world.add_child(pot)
 	var soil := MeshInstance3D.new()
 	var pl := PlaneMesh.new()
 	pl.size = Vector2(0.3, 0.2)
 	soil.mesh = pl
 	soil.position.y = 0.0005
-	var sm := ShaderMaterial.new()
-	sm.shader = preload("res://shaders/soil.gdshader")
-	sm.set_shader_parameter("tex", load("res://textures/soil.png"))
-	sm.set_shader_parameter("scale", Vector2(6, 4))
-	soil.material_override = sm
+	soil.material_override = TreeMesh.toon(3, Color(0.5, 0.33, 0.22))
 	world.add_child(soil)
 
 
 func _set_species(species: Dictionary) -> void:
 	sim.reset(randi(), species)
 	wood_mi.material_override = TreeMesh.bark_material(sim)
-	if sim.foliage_tex != "":
-		leaves_mi.material_override = TreeMesh.leaf_material(load(sim.foliage_tex))
 
 
 func _build_ui() -> void:
@@ -277,9 +256,8 @@ func _pinch_len() -> float:
 
 ## Sélectionne le segment le plus proche du doigt à l'écran.
 func _select_at(pos: Vector2) -> void:
-	pos /= shrink  # coordonnées du rendu basse résolution
 	var best := -1
-	var best_d := 40.0 * ui_scale / shrink
+	var best_d := 40.0 * ui_scale
 	for i in sim.segs.size():
 		var s := sim.segs[i]
 		if sim.growth(s, sim.week + frac) <= 0.0:

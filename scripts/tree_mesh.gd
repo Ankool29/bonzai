@@ -1,13 +1,11 @@
 class_name TreeMesh
 extends RefCounted
-## Rendu pixel art texturé de l'arbre à l'instant t (semaines) :
+## Maillage de l'arbre à l'instant t (semaines), rendu en cel shading :
 ## - chaque axe (tronc, branche, rameau) est un tube continu, tracé et épaisseur lissés, écorce procédurale ;
-## - orme : une feuille par nœud, image PixelLab sur un plan ancré au nœud (3 variantes) ;
+## - orme : une feuille par nœud (pétiole et limbe ovale en géométrie), ancrée au nœud ;
 ## - pin : aiguilles par paires dessinées en géométrie (deux triangles fins croisés).
-## La scène est ensuite rendue en basse résolution par main.gd, d'où l'aspect pixel art.
 
 const SIDES := 12
-const FRAMES := 3                          # variantes de feuilles dans l'atlas
 const YOUNG := Color(0.55, 0.47, 0.38, 0.35)  # rameau de l'année : gris-brun lisse
 const SELECTED := Color(0.95, 0.2, 0.12, 0.7)
 const WEAK := Color(0.8, 0.7, 0.35, 0.3)     # branche qui s'affaiblit à l'ombre
@@ -27,7 +25,6 @@ var cols := PackedColorArray()
 var idx := PackedInt32Array()
 var lverts := PackedVector3Array()  # feuilles
 var lnorms := PackedVector3Array()
-var luvs := PackedVector2Array()
 var lcols := PackedColorArray()
 
 
@@ -39,33 +36,23 @@ static func build(s: TreeSim, highlight: PackedInt32Array, time: float, leaves: 
 	return m._build(highlight, leaves)
 
 
-static func bark_material(s: TreeSim) -> ShaderMaterial:
+## Matériau cel shading (voir shaders/toon.gdshader), avec contour optionnel.
+static func toon(pattern: int, color := Color.WHITE, outline := false) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
-	mat.shader = preload("res://shaders/bark.gdshader")
+	mat.shader = preload("res://shaders/toon.gdshader")
+	mat.set_shader_parameter("pattern", pattern)
+	mat.set_shader_parameter("albedo", color)
+	if outline:
+		var o := ShaderMaterial.new()
+		o.shader = preload("res://shaders/outline.gdshader")
+		mat.next_pass = o
+	return mat
+
+
+static func bark_material(s: TreeSim) -> ShaderMaterial:
+	var mat := toon(1 if s.leaf_years == 0 else 2, Color.WHITE, true)
 	for k in 4:
-		mat.set_shader_parameter(["tone1", "tone2", "fleck", "fissure"][k], s.bark_colors[k])
-	mat.set_shader_parameter("fleck_amount", s.bark_fleck)
-	mat.set_shader_parameter("fissure_amount", s.bark_fissure)
-	mat.set_shader_parameter("lacebark", s.leaf_years == 0)
-	return mat
-
-
-static func leaf_material(tex: Texture2D) -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.albedo_texture = tex
-	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
-	mat.vertex_color_use_as_albedo = true
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.roughness = 1.0
-	return mat
-
-
-static func needle_material() -> StandardMaterial3D:
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.roughness = 1.0
+		mat.set_shader_parameter(["tone1", "tone2", "tone3", "fissure"][k], s.bark_colors[k])
 	return mat
 
 
@@ -184,7 +171,7 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 	var v := 0.0
 	var axis_seed := i0 * 0.37  # irrégularités propres à chaque axe
 	var prev := _ring(pts[0], d, a, rad[0], v, col[0], axis_seed)
-	_cap(prev, pts[0] - d * rad[0] * 0.5)
+	_cap(prev, pts[0] - d * rad[0] * 0.5, false)
 	for m in range(1, pts.size()):
 		d = (pts[m] - pts[m - 1]).normalized()
 		if m + 1 < pts.size():
@@ -194,11 +181,12 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 		var cur := _ring(pts[m], d, a, maxf(rad[m], 0.0008), v, col[m], axis_seed)
 		_join(prev, cur)
 		prev = cur
-	_cap(prev, pts[-1] + d * maxf(rad[rad.size() - 1], 0.0008) * 0.6)
+	_cap(prev, pts[-1] + d * maxf(rad[rad.size() - 1], 0.0008) * 0.6, true)
 
 
 ## Ferme un bout de tube (pointe, coupe) par un petit cône : plus de tube creux visible.
-func _cap(ring: int, tip: Vector3) -> void:
+## flip : sens des triangles pour que la face avant regarde dehors (nécessaire au contour).
+func _cap(ring: int, tip: Vector3, flip: bool) -> void:
 	var t0 := verts.size()
 	verts.append(tip)
 	norms.append((tip - verts[ring]).normalized())
@@ -206,8 +194,8 @@ func _cap(ring: int, tip: Vector3) -> void:
 	uv2s.append(uv2s[ring])
 	cols.append(cols[ring])
 	for k in SIDES:
-		idx.append(ring + k)
-		idx.append(ring + k + 1)
+		idx.append(ring + k + (1 if flip else 0))
+		idx.append(ring + k + (0 if flip else 1))
 		idx.append(t0)
 
 
@@ -281,20 +269,40 @@ func _foliage(s: TreeSim.Seg, f: float, weak: bool, selected: bool) -> void:
 		col *= Color(1.0, 0.9, 0.55)
 	if selected:
 		col = Color(1.0, 0.35, 0.3)
-	# Feuille d'orme : pétiole au nœud, limbe presque horizontal dans le prolongement du bourgeon
-	# (feuilles alternes sur deux rangs), légère inclinaison au hasard. L'image inclut le pétiole.
+	# Feuille d'orme : pétiole de 3 mm au nœud, limbe ovale pointu presque horizontal dans le
+	# prolongement du bourgeon (feuilles alternes sur deux rangs), légère inclinaison au hasard.
 	var dir := Vector3(s.lat_dir.x, s.lat_dir.y * 0.3, s.lat_dir.z).normalized()
 	var side := Vector3.UP.cross(dir).normalized().rotated(dir, (h - 0.5) * 0.8)
-	var l := sim.foliage_size * f
-	var b := s.end
-	var q := [b - side * l * 0.5, b + side * l * 0.5, b + side * l * 0.5 + dir * l, b - side * l * 0.5 + dir * l]
-	var u0 := float(floori(h * FRAMES) % FRAMES) / FRAMES
-	var u1 := u0 + 1.0 / FRAMES
 	var nrm := dir.cross(side).normalized()
-	for k in [[0, u0, 1.0], [1, u1, 1.0], [2, u1, 0.0], [0, u0, 1.0], [2, u1, 0.0], [3, u0, 0.0]]:
-		lverts.append(q[k[0]])
+	var l := sim.foliage_size * f
+	var w := l * 0.22
+	var b0 := s.end + dir * 0.003 * f  # base du limbe, au bout du pétiole
+	if not selected:
+		col *= Color(0.35, 0.62, 0.22) if h < 0.5 else Color(0.28, 0.55, 0.2)
+	_tri(s.end + side * 0.0004, s.end - side * 0.0004, b0, nrm, col)  # pétiole
+	var c := b0 + dir * l * 0.45
+	var prev := b0
+	for k in range(1, 13):
+		var u := PI * k / 12.0  # contour d'un côté puis de l'autre
+		var x := (1.0 - cos(u)) * 0.5
+		var y := sin(u) * (1.0 - x * 0.35) * w
+		var p1 := b0 + dir * l * x + side * y
+		_tri(c, prev, p1, nrm, col)
+		prev = p1
+	prev = b0
+	for k in range(1, 13):
+		var u := PI * k / 12.0
+		var x := (1.0 - cos(u)) * 0.5
+		var y := sin(u) * (1.0 - x * 0.35) * w * 0.85  # base oblique : un côté plus étroit
+		var p1 := b0 + dir * l * x - side * y
+		_tri(c, p1, prev, nrm, col)
+		prev = p1
+
+
+func _tri(p0: Vector3, p1: Vector3, p2: Vector3, nrm: Vector3, col: Color) -> void:
+	for q in [p0, p1, p2]:
+		lverts.append(q)
 		lnorms.append(nrm)
-		luvs.append(Vector2(k[1], k[2]))
 		lcols.append(col)
 
 
@@ -349,7 +357,6 @@ func _leaf_mesh() -> ArrayMesh:
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = lverts
 	arr[Mesh.ARRAY_NORMAL] = lnorms
-	arr[Mesh.ARRAY_TEX_UV] = luvs
 	arr[Mesh.ARRAY_COLOR] = lcols
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	return mesh
