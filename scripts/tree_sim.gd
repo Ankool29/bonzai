@@ -3,7 +3,7 @@ extends RefCounted
 ## Simulation d'un arbre : modèle auto-organisé de Palubicki et al. (2009), simplifié.
 ## Les bourgeons se disputent la lumière (grille d'ombre), la vigueur part de la base et se répartit
 ## avec une dominance apicale (modèle de Borchert-Honda), les branches mal éclairées meurent,
-## le diamètre suit le « pipe model ». Unités : mètres ; temps : semaines (52 par an).
+## le bois épaissit d'un cerne par an (loi de Pressler). Unités : mètres ; temps : semaines (52 par an).
 
 class Seg:
 	var parent := -1
@@ -52,7 +52,7 @@ var w_light := 0.35
 var w_up := 0.12
 var jitter := 0.12
 var tip_radius := 0.0012
-var pipe_exp := 2.5
+var ring_area := 1.5e-6        # cerne annuel : surface ajoutée (m²) par unité de lumière captée au-dessus
 var shed_ratio := 0.04        # lumière par entre-nœud sous laquelle une branche dépérit
 var bud_life := 52 * 8        # durée de vie d'un bourgeon dormant (semaines)
 var backbud_nodes := 4        # nœuds sous la coupe qui peuvent rebourgeonner
@@ -177,6 +177,12 @@ func _end_of_year() -> void:
 			if s.lat_bud_age > bud_life:
 				s.lat_bud = false
 	reserve = lerpf(reserve, segs[0].light, 0.5)  # les racines s'ajustent en un an ou deux
+	# Cerne annuel : chaque entre-nœud vivant ajoute une couche de bois proportionnelle au feuillage
+	# qu'il porte (loi de Pressler). Le bas du tronc, qui porte tout, épaissit le plus : conicité continue,
+	# et le tronc continue de grossir même après une taille.
+	for s in segs:
+		if not s.dry:
+			s.radius = sqrt(s.radius * s.radius + ring_area * s.light / PI)
 	# Les rameaux morts fins tombent d'eux-mêmes au bout d'un an ; le gros bois mort reste.
 	var fell := false
 	for i in range(1, segs.size()):
@@ -254,14 +260,10 @@ func _basipetal() -> void:
 		s.q_lat = _light(_lat_pos(s)) if s.lat_bud and has_shadow else 0.0
 		s.light = s.q_term + s.q_lat
 		s.count = 0 if s.dry else 1
-		var r := pow(tip_radius, pipe_exp) if (s.term_bud or s.lat_bud) else 0.0
 		for c in [s.main_child, s.lat_child]:
 			if c >= 0:
 				s.light += segs[c].light
 				s.count += segs[c].count
-				r += pow(segs[c].radius, pipe_exp)
-		if r > 0.0:
-			s.radius = maxf(s.radius, pow(r, 1.0 / pipe_exp))  # le bois ne maigrit pas
 
 
 ## De la base vers les feuilles : répartition de la vigueur (Borchert-Honda).

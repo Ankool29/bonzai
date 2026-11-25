@@ -20,7 +20,7 @@ const ELM := {
 	"phyllotaxy": deg_to_rad(180.0),  # alterne distique
 	"w_light": 0.35,
 	"w_up": 0.12,
-	"jitter": 0.12,
+	"jitter": 0.06,
 	"shed_ratio": 0.04,
 	"bud_life": 52 * 8,
 	"backbud_chance": 0.6,

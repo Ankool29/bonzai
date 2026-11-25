@@ -8,7 +8,7 @@ de l'arbre : pousse selon l'espèce, réaction à la taille et au ligaturage.
 - Base : modèle auto-organisé de Palubicki et al. (2009), *Self-organizing tree models for image synthesis* :
   compétition des bourgeons pour la lumière et l'espace, flux de vigueur interne, mort des branches faibles.
   La taille redistribue la vigueur et réveille des bourgeons dormants (rebourgeonnage).
-- Épaississement : « pipe model » (règle de Léonard de Vinci).
+- Épaississement : un cerne par an, surface proportionnelle au feuillage porté (loi de Pressler) ; conicité continue, le tronc grossit même après une taille.
 - Ligaturage : déformation plastique du bois sous contrainte constante (idée de Pirk et al. 2014, *Windy Trees*).
   Le fil marque l'écorce s'il reste trop longtemps. Casse si on plie trop.
 - Espèces : un jeu de paramètres (phyllotaxie alterne/opposée/verticillée, dominance apicale, entre-nœuds, angles,
