@@ -13,6 +13,7 @@ var pending := 0      # semaines restant à jouer
 var frac := 0.0       # avancement dans la semaine en cours (pour voir les pousses s'allonger)
 var speed := 1.0      # semaines par seconde
 var show_leaves := true
+var layout := 0
 
 var touches := {}
 var tap_start := Vector2.ZERO
@@ -129,12 +130,16 @@ func _process(delta: float) -> void:
 		frac -= 1.0
 	if pending == 0:
 		frac = 0.0
+	if sim.layout != layout:  # des rameaux morts sont tombés : les indices ont changé
+		layout = sim.layout
+		selected = -1
 	_refresh()
 
 
 func _cut() -> void:
 	if sim.prune(selected):
 		selected = -1
+		layout = sim.layout
 		_refresh()
 
 
@@ -146,6 +151,7 @@ func _toggle_leaves() -> void:
 func _new_tree() -> void:
 	sim.reset(randi())
 	selected = -1
+	layout = sim.layout
 	pending = 0
 	frac = 0.0
 	dist = 0.35
