@@ -23,6 +23,12 @@ class Seg:
 	var dry := false         # bois mort resté sur l'arbre
 	var dry_week := 0
 	var r0 := 0.0            # épaisseur en début de période animée (0 : né pendant la période)
+	# plaie de taille au bout de cet entre-nœud (sur le côté si la branche coupée était latérale)
+	var wound_full := 0.0    # rayon de la coupe
+	var wound_r := 0.0       # rayon encore ouvert (0 : refermée)
+	var wound_concave := false
+	var wound_dir := Vector3.ZERO
+	var wound_side := false
 	var weak := 0            # étés passés trop à l'ombre
 	var lat_q := 1.0         # qualité du bourgeon axillaire (puis vigueur propre du rameau latéral)
 	var release := 1.0       # bonus des bourgeons de ce nœud après une coupe (levée de dominance)
@@ -120,10 +126,22 @@ func step_week() -> void:
 
 
 ## Coupe le segment i et tout ce qu'il porte. Renvoie false pour la base (on ne coupe pas tout l'arbre).
-func prune(i: int) -> bool:
+const WOUND_MIN := 0.0015      # rayon au-delà duquel une coupe laisse une plaie (3 mm de diamètre)
+
+
+## concave : coupe à la pince concave (la plaie se referme deux fois plus vite).
+func prune(i: int, concave := false) -> bool:
 	if i <= 0 or i >= segs.size():
 		return false
 	var j := segs[i].parent
+	var cut := segs[i]
+	if cut.radius > WOUND_MIN and not cut.dry:
+		var w := segs[j]
+		w.wound_full = maxf(w.wound_full, cut.radius)
+		w.wound_r = w.wound_full
+		w.wound_concave = concave
+		w.wound_dir = (cut.end - cut.start).normalized()
+		w.wound_side = w.main_child != i
 	_kill(i)
 	# La coupe lève la dominance apicale : les bourgeons juste en dessous (dormants ou adventifs)
 	# se réveillent et prennent de la vigueur l'année suivante.
@@ -188,7 +206,13 @@ func _end_of_year() -> void:
 	# et le tronc continue de grossir même après une taille.
 	for s in segs:
 		if not s.dry:
+			var old := s.radius
 			s.radius = sqrt(s.radius * s.radius + ring_area * s.light / PI)
+			if s.wound_r > 0.0:
+				# le bourrelet de cicatrisation avance avec le cerne, deux fois plus vite après la pince concave
+				s.wound_r = maxf(0.0, s.wound_r - (s.radius - old) * (6.0 if s.wound_concave else 3.0))
+				if s.wound_r == 0.0:
+					s.wound_full = 0.0
 	# Les rameaux morts fins tombent d'eux-mêmes au bout d'un an ; le gros bois mort reste.
 	var fell := false
 	for i in range(1, segs.size()):
