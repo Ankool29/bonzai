@@ -16,3 +16,12 @@
 - Écorce procédurale en pixels (cellules de 2,5 mm, deux tons, taches orangées de l'orme, fissures allongées) au lieu
   des textures PixelLab ; tracé des axes lissé en plus de l'épaisseur ; tubes à 12 faces.
 - Terre plus fine. Vérifié sur un aperçu calculé avec le portage Python (orme 2 et 8 ans, pin 4 ans).
+
+## Correctifs 2 (validés)
+- Tronc : les anneaux du tube sont espacés d'au moins 1,2 rayon (sinon un tube épais se replie dans les virages,
+  d'où le tronc « en morceaux »), puis tracé en courbe de Catmull-Rom.
+- Feuilles d'orme : plan texturé ancré au nœud (pétiole au nœud), limbe presque horizontal dans le prolongement du
+  bourgeon, feuilles de 2 cm ; plus d'images tournées vers la caméra.
+- Écorce d'orme d'après la documentation : plaques desquamées marbrées (gris, olive, beige, orangé, crème) sur le bois
+  âgé, rameaux fins gris-brun lisses.
+- Sources : UF/IFAS ST-652 (Ulmus parvifolia), UConn Plant Database, Flora of North America.

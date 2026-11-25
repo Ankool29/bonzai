@@ -40,7 +40,7 @@ var bark_colors := [Color(0.55, 0.52, 0.47), Color(0.63, 0.6, 0.55), Color(0.62,
 var bark_fleck := 0.15
 var bark_fissure := 0.18
 var foliage_tex := "res://textures/leaf_elm.png"
-var foliage_size := 0.016    # taille d'une feuille (m)
+var foliage_size := 0.02     # longueur d'une feuille avec son pétiole (m)
 var internode := 0.018
 var alpha := 1.6              # vigueur totale = alpha × lumière captée
 var apical := 0.53            # part de vigueur donnée à l'axe principal (λ)
