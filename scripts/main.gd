@@ -14,7 +14,14 @@ var yaw := 0.6
 var pitch := 0.25
 var dist := 0.35
 var target := Vector3(0, 0.05, 0)
-var selected := -1
+var axis: Array[int] = []    # branche sélectionnée, de sa base à sa pointe
+var cut_k := -1                # entre-nœud de l'axe où passe la coupe (juste au-dessus du nœud d'en dessous)
+var tool := 1                  # 0 : doigts (pinçage), 1 : ciseaux, 2 : pince concave
+var tool_btns: Array[Button] = []
+var dragging_cut := false
+var overlay := MeshInstance3D.new()  # repère de coupe et bourgeons
+var msg: Label
+var msg_until := 0
 var show_leaves := true
 var layout := 0
 var task := -1        # calcul de la période en cours (WorkerThreadPool), -1 si aucun
@@ -75,6 +82,13 @@ func _ready() -> void:
 	cam.far = 20.0
 	cam.fov = 45.0
 	world.add_child(cam)
+	var om := StandardMaterial3D.new()
+	om.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	om.vertex_color_use_as_albedo = true
+	om.no_depth_test = true
+	overlay.material_override = om
+	overlay.mesh = ImmediateMesh.new()
+	world.add_child(overlay)
 	_build_ui()
 	_set_species(Species.ELM)
 	_refresh()
@@ -114,6 +128,13 @@ func _build_ui() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.theme = theme
 	layer.add_child(root)
+	msg = Label.new()  # message court (outil inadapté…)
+	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	msg.add_theme_color_override("font_color", Color(0.15, 0.1, 0.08))
+	msg.custom_minimum_size.y = 120 * ui_scale
+	msg.visible = false
+	root.add_child(msg)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -132,10 +153,15 @@ func _build_ui() -> void:
 	_button(row1, "+1 an", func(): _advance(52))
 	var row2 := HBoxContainer.new()
 	box.add_child(row2)
+	for k in 3:
+		var b := _button(row2, ["Doigts", "Ciseaux", "Pince concave"][k], _set_tool.bind(k))
+		b.toggle_mode = true
+		tool_btns.append(b)
+	_set_tool(tool)
 	cut_btn = _button(row2, "Couper", _cut)
-	_button(row2, "Feuilles", _toggle_leaves)
 	var row3 := HBoxContainer.new()
 	box.add_child(row3)
+	_button(row3, "Feuilles", _toggle_leaves)
 	_button(row3, "Nouvel orme", func(): _new_tree(Species.ELM))
 	_button(row3, "Nouveau pin", func(): _new_tree(Species.PINE))
 	_button(row3, "Recentrer", _recenter)
@@ -170,7 +196,7 @@ func _button(parent: Control, text: String, cb: Callable) -> Button:
 func _advance(weeks: int) -> void:
 	if _busy():
 		return
-	selected = -1
+	_clear_cut()
 	sim.begin_period()
 	anim_t0 = sim.week
 	anim_t1 = sim.week + weeks
@@ -188,6 +214,8 @@ func _advance(weeks: int) -> void:
 
 
 func _process(delta: float) -> void:
+	if msg.visible and Time.get_ticks_msec() > msg_until:
+		msg.visible = false
 	if gliding:  # glissement doux vers le point choisi par double-tap
 		var k := 1.0 - exp(-delta * 8.0)
 		target = target.lerp(goal_target, k)
@@ -228,7 +256,7 @@ func _stop_anim() -> void:
 func _set_buttons(on: bool) -> void:
 	for b in panel.find_children("*", "Button", true, false):
 		b.disabled = not on
-	cut_btn.disabled = not on or selected <= 0
+	cut_btn.disabled = not on or cut_k < 0
 
 
 func _set_time(time: float) -> void:
@@ -242,11 +270,44 @@ func _show(meshes: Array) -> void:
 	needles_mi.mesh = meshes[2]
 
 
+func _set_tool(k: int) -> void:
+	tool = k
+	for i in tool_btns.size():
+		tool_btns[i].set_pressed_no_signal(i == k)
+
+
+## Coupe à l'endroit du repère avec l'outil choisi ; le jeu refuse un outil inadapté.
 func _cut() -> void:
-	if not _busy() and sim.prune(selected):
-		selected = -1
+	if _busy() or cut_k < 0:
+		return
+	var i := axis[cut_k]
+	var s := sim.segs[i]
+	if i == 0:
+		_say("On ne coupe pas le tronc à sa base.")
+		return
+	if tool == 0 and s.born < floorf(sim.week / 52.0) * 52.0:
+		_say("Le pinçage ne marche que sur les pousses vertes de l'année.")
+		return
+	if tool == 1 and s.radius > TreeSim.WOUND_MIN:
+		_say("Trop épais pour les ciseaux : prends la pince concave.")
+		return
+	if sim.prune(i, tool == 2):
+		_clear_cut()
 		layout = sim.layout
 		_refresh()
+
+
+func _say(text: String) -> void:
+	msg.text = text
+	msg.visible = true
+	msg_until = Time.get_ticks_msec() + 2500
+
+
+func _clear_cut() -> void:
+	axis.clear()
+	cut_k = -1
+	dragging_cut = false
+	_draw_overlay()
 
 
 func _toggle_leaves() -> void:
@@ -260,7 +321,7 @@ func _new_tree(species: Dictionary) -> void:
 	if _busy():
 		return
 	_set_species(species)
-	selected = -1
+	_clear_cut()
 	layout = sim.layout
 	_refresh()
 	_recenter()
@@ -268,13 +329,14 @@ func _new_tree(species: Dictionary) -> void:
 
 ## Arbre immobile à la date actuelle (après une coupe, une sélection, un changement d'affichage).
 func _refresh() -> void:
-	var hl := sim.subtree(selected) if selected > 0 else PackedInt32Array()
+	var hl := sim.subtree(axis[cut_k]) if cut_k >= 0 else PackedInt32Array()
 	anim_t0 = sim.week
 	anim_t1 = sim.week
 	_show(TreeMesh.build(sim, hl, sim.week, sim.week, show_leaves))
 	_set_time(sim.week)
-	cut_btn.disabled = selected <= 0
+	cut_btn.disabled = cut_k < 0
 	_info(sim.week)
+	_draw_overlay()
 	_update_cam()
 
 
@@ -314,6 +376,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 			if touches.size() == 1:
 				tap_start = ev.position
 				tap_moved = false
+				# doigt posé sur le repère de coupe : on le fait glisser le long de la branche
+				dragging_cut = cut_k >= 0 and _cut_screen_pos().distance_to(ev.position) < 45.0 * ui_scale
 			else:
 				tap_moved = true
 				pinch = _pinch_len()
@@ -321,6 +385,11 @@ func _unhandled_input(ev: InputEvent) -> void:
 				mid = (p[0] + p[1]) * 0.5
 		elif touches.has(ev.index):
 			touches.erase(ev.index)
+			if dragging_cut and touches.is_empty():
+				dragging_cut = false
+				if tap_moved:
+					_refresh()  # la partie retirée s'affiche en rouge
+					return
 			if touches.is_empty() and not tap_moved:
 				var now := Time.get_ticks_msec()
 				if now - last_tap_ms < 350 and ev.position.distance_to(last_tap_pos) < 40.0 * ui_scale:
@@ -336,7 +405,9 @@ func _unhandled_input(ev: InputEvent) -> void:
 		touches[ev.index] = ev.position
 		if ev.position.distance_to(tap_start) > 12.0 * ui_scale:
 			tap_moved = true
-		if touches.size() == 1 and tap_moved:
+		if touches.size() == 1 and dragging_cut:
+			_move_cut(ev.position)
+		elif touches.size() == 1 and tap_moved:
 			yaw -= ev.relative.x * 0.008
 			pitch = clampf(pitch + ev.relative.y * 0.006, -1.5, 1.5)  # dessus comme dessous
 			gliding = false
@@ -392,8 +463,78 @@ func _select_at(pos: Vector2) -> void:
 		return
 	if task >= 0:
 		return
-	selected = _pick(pos)
+	var i := _pick(pos)
+	axis.clear()
+	cut_k = -1
+	if i >= 0:
+		# l'axe qui porte l'entre-nœud touché, de sa base à sa pointe
+		var b := i
+		while sim.segs[b].parent >= 0 and sim.segs[sim.segs[b].parent].main_child == b:
+			b = sim.segs[b].parent
+		while b >= 0:
+			axis.append(b)
+			b = sim.segs[b].main_child
+		cut_k = axis.find(i)
 	_refresh()
+
+
+func _cut_screen_pos() -> Vector2:
+	return cam.unproject_position(sim.segs[axis[cut_k]].start)
+
+
+## Le repère saute de nœud en nœud le long de la branche, au plus près du doigt.
+func _move_cut(pos: Vector2) -> void:
+	var best := cut_k
+	var best_d := INF
+	for k in axis.size():
+		var p := sim.segs[axis[k]].start
+		if cam.is_position_behind(p):
+			continue
+		var d := cam.unproject_position(p).distance_to(pos)
+		if d < best_d:
+			best_d = d
+			best = k
+	if best != cut_k:
+		cut_k = best
+		_draw_overlay()
+
+
+## Repère de coupe (jaune), partie retirée pendant qu'on glisse (rouge), bourgeons de la branche (vert)
+## avec la direction où ils repartiront ; le bourgeon juste sous la coupe est plus long.
+func _draw_overlay() -> void:
+	var im := overlay.mesh as ImmediateMesh
+	im.clear_surfaces()
+	if cut_k < 0:
+		return
+	im.surface_begin(Mesh.PRIMITIVE_LINES)
+	var c := sim.segs[axis[cut_k]]
+	var d := (c.end - c.start).normalized()
+	var a := d.cross(Vector3.UP if absf(d.y) < 0.9 else Vector3.RIGHT).normalized()
+	var b := d.cross(a)
+	var r := c.radius + 0.004
+	for v in [a, b]:
+		im.surface_set_color(Color(1.0, 0.85, 0.1))
+		im.surface_add_vertex(c.start - v * r)
+		im.surface_set_color(Color(1.0, 0.85, 0.1))
+		im.surface_add_vertex(c.start + v * r)
+	if dragging_cut:
+		for k in sim.subtree(axis[cut_k]):
+			var s := sim.segs[k]
+			im.surface_set_color(Color(0.95, 0.2, 0.12))
+			im.surface_add_vertex(s.start)
+			im.surface_set_color(Color(0.95, 0.2, 0.12))
+			im.surface_add_vertex(s.end)
+	for k in axis.size():
+		var s := sim.segs[axis[k]]
+		if not s.lat_bud:
+			continue
+		var below := k == cut_k - 1
+		var col := Color(0.2, 1.0, 0.3) if below else Color(0.3, 0.75, 0.3)
+		im.surface_set_color(col)
+		im.surface_add_vertex(s.end)
+		im.surface_set_color(col)
+		im.surface_add_vertex(s.end + s.lat_dir * (0.012 if below else 0.006))
+	im.surface_end()
 
 
 ## Segment le plus proche du doigt à l'écran (-1 si aucun assez près).

@@ -107,6 +107,8 @@ func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 			_axis(i, seg_f, seg_col)
 		if leaves and not s.dry:
 			_foliage(s, weak[i] == 1, marked.has(i))
+		if s.wound_r > 0.0:
+			_wound(s)
 	if n > 0:
 		_nebari()
 	_fallen()
@@ -231,6 +233,35 @@ func _cap(ring: int, tip: Vector3, flip: bool) -> void:
 		idx.append(ring + k + (1 if flip else 0))
 		idx.append(ring + k + (0 if flip else 1))
 		idx.append(t0)
+
+
+## Plaie de taille : disque de bois clair cerné d'un bourrelet d'écorce qui se referme avec les cernes.
+func _wound(s: TreeSim.Seg) -> void:
+	var n := s.wound_dir
+	var c := s.end + n * (s.radius * 0.85 if s.wound_side else 0.0)
+	_disc(c, n, s.wound_full * 1.2, Color(0.42, 0.34, 0.27, 1.0))  # bourrelet
+	_disc(c + n * 0.0003, n, s.wound_r, Color(0.86, 0.76, 0.56, 1.0))  # bois à nu
+
+
+## Disque plat (face avant vers n), immobile pendant l'animation.
+func _disc(c: Vector3, n: Vector3, r: float, col: Color) -> void:
+	var a := _perp(n)
+	var b := n.cross(a)
+	var base := verts.size()
+	for k in SIDES + 1:
+		var ang := TAU * k / SIDES
+		verts.append(c + (a * cos(ang) + b * sin(ang)) * r if k < SIDES else c)
+		norms.append(n)
+		uvs.append(Vector2.ZERO)
+		uv2s.append(Vector2(3, 0))
+		cols.append(col)
+		wc0.append_array([-1000.0, 1.0, 1.0, -1.0])
+		wc1.append_array([c.x, c.y, c.z, NEVER])
+		wc2.append_array([c.x, c.y, c.z, 0.0])
+	for k in SIDES:
+		idx.append(base + SIDES)
+		idx.append(base + (k + 1) % SIDES)
+		idx.append(base + k)
 
 
 ## Racines de surface provisoires, à la taille du tronc (en attendant les racines simulées).

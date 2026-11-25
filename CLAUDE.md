@@ -15,7 +15,7 @@ Godot 4.7, GDScript, cible mobile (Galaxy S25 Ultra). Le joueur parle français 
 - `scripts/tree_sim.gd` (`TreeSim`) : simulation de l'arbre (segments, bourgeons, grille d'ombre, poussées, élagage naturel, taille). Valeurs de l'orme par défaut, remplacées par une fiche espèce.
 - `scripts/species.gd` (`Species`) : fiches espèces (orme, pin).
 - `scripts/tree_mesh.gd` (`TreeMesh`) : bois (anneaux continus, fourches en Y), feuilles d'orme et aiguilles de pin en géométrie, dates d'animation par sommet, matériaux cel shading.
-- `scripts/main.gd` : scène (soleil et ombres, pot), caméra au doigt, sélection et coupe, boutons ; avance du temps (calcul en fil de calcul puis animation). Scène : `scenes/main.tscn`.
+- `scripts/main.gd` : scène (soleil et ombres, pot), caméra au doigt, sélection, repère de coupe et outils de taille, boutons ; avance du temps (calcul en fil de calcul puis animation). Scène : `scenes/main.tscn`.
 - `shaders/toon.gdshader` (cel shading, motifs d'écorce et de terre), `shaders/outline.gdshader` (contours), `shaders/anim.gdshaderinc` (animation de la pousse à partir des dates portées par les sommets). Ne jamais mettre la clé PixelLab dans le dépôt.
 
 ## Ailleurs
