@@ -51,9 +51,7 @@ var shed_ratio := 0.04        # lumière par entre-nœud sous laquelle une branc
 var bud_life := 52 * 8        # durée de vie d'un bourgeon dormant (semaines)
 var backbud_nodes := 4        # nœuds sous la coupe qui peuvent rebourgeonner
 var backbud_chance := 0.6
-var pot_q := 120.0            # lumière au-delà de laquelle les racines du pot ne suivent plus
-var spur_min := 0.5           # vigueur minimale pour un rameau court…
-var spur_light := 0.7         # …et lumière minimale sur le bourgeon
+var capacity := 1500          # entre-nœuds vivants que le pot peut nourrir (en attendant les racines)
 var release_nodes := 3        # nœuds sous la coupe qui profitent de la levée de dominance
 var release_boost := 3.0
 var sprout_excess := 1.4      # réserves / lumière au-delà duquel des rejets apparaissent
@@ -259,9 +257,8 @@ func _basipetal() -> void:
 ## De la base vers les feuilles : répartition de la vigueur (Borchert-Honda).
 func _allocate(strength: float) -> void:
 	reserve = maxf(reserve, segs[0].light)
-	# Le pot plafonne ce que les racines fournissent : un gros arbre répartit la même vigueur
-	# sur plus de bourgeons, d'où des pousses plus courtes.
-	segs[0].vigor = alpha * pot_q * reserve / (reserve + pot_q) * strength
+	var pot := clampf(1.0 - float(segs[0].count) / capacity, 0.0, 1.0)
+	segs[0].vigor = alpha * reserve * strength * pot
 	for s in segs:
 		var qm := segs[s.main_child].light if s.main_child >= 0 else s.q_term
 		var ql := segs[s.lat_child].light if s.lat_child >= 0 else s.q_lat
@@ -284,10 +281,11 @@ func _grow() -> void:
 	var n0 := segs.size()
 	for i in n0:
 		var s := segs[i]
-		if s.term_bud and (s.v_term >= 1.0 or (s.v_term >= spur_min and s.q_term >= spur_light)):
+		# Démarre avec une probabilité égale à sa vigueur (sous 1 : rameau court).
+		if s.term_bud and s.v_term + rng.randf() >= 1.0:
 			s.term_bud = false
 			s.main_child = _shoot(i, s.end - s.start, s.v_term)
-		if s.lat_bud and (s.v_lat >= 1.0 or (s.v_lat >= spur_min and s.q_lat >= spur_light)):
+		if s.lat_bud and s.v_lat + rng.randf() >= 1.0:
 			s.lat_bud = false
 			s.lat_child = _shoot(i, s.lat_dir, s.v_lat)
 		s.v_term = 0.0
@@ -295,12 +293,12 @@ func _grow() -> void:
 
 
 ## Fait pousser une tige depuis le bout du segment parent. Renvoie le premier entre-nœud.
-## Vigueur < 1 : rameau court (un entre-nœud minuscule). Sinon environ v entre-nœuds (arrondi au hasard),
+## Vigueur < 1 : rameau court (un entre-nœud raccourci). Sinon environ v entre-nœuds (arrondi au hasard),
 ## d'autant plus longs que la pousse est vigoureuse, plus courts au début et à la fin du rameau.
 func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 	var spur := v < 1.0
 	var n := 1 if spur else clampi(int(v + rng.randf()), 1, max_per_flush)
-	var len_v := 0.3 if spur else clampf(0.5 + 0.15 * v, 0.5, 1.5)
+	var len_v := 0.8 if spur else clampf(0.6 + 0.15 * v, 0.7, 1.5)
 	var first := -1
 	var prev := parent_i
 	var d := dir.normalized()
@@ -312,7 +310,7 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 		var s := Seg.new()
 		s.parent = prev
 		s.start = p
-		var profile := 1.0 if spur else 0.6 + 0.6 * sin(PI * (k + 0.5) / n)
+		var profile := 1.0 if spur else 0.85 + 0.35 * sin(PI * (k + 0.5) / n)
 		s.end = p + d * internode * len_v * profile * rng.randf_range(0.8, 1.2)
 		s.radius = tip_radius
 		s.grow_time = GROW_WEEKS / n
