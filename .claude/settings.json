@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./**/*.png)",
+      "Read(./**/*.import)",
+      "Read(./**/*.res)",
+      "Read(./**/*.bin)",
+      "Read(./tools/sprites/raw/**)"
+    ]
+  }
+}
