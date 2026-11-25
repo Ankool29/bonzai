@@ -25,3 +25,8 @@
 - Écorce d'orme d'après la documentation : plaques desquamées marbrées (gris, olive, beige, orangé, crème) sur le bois
   âgé, rameaux fins gris-brun lisses.
 - Sources : UF/IFAS ST-652 (Ulmus parvifolia), UConn Plant Database, Flora of North America.
+
+## Correctifs 3 (tronc)
+- Anneaux espacés d'au moins 2,5 rayons puis lissage de Chaikin (la spline de Catmull-Rom dépassait et faisait des boucles).
+- Départ de branche enfoncé dans le parent et jamais plus épais que lui ; bouts de tube fermés (plus de « manchons » creux).
+- Pipe model en exposant 3 (branches plus fines) et zigzag de l'orme réduit (jitter 0,06).

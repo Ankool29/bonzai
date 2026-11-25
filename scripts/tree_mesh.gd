@@ -130,31 +130,46 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 	for m in chain.size():
 		var s := sim.segs[chain[m]]
 		raw.append(s.start + (s.end - s.start) * seg_f[chain[m]])
-	# Décimation : anneaux espacés d'au moins 1,2 rayon, sinon un tube épais se replie dans les virages
+	if sim.segs[i0].parent >= 0:
+		# départ de branche : le début du tube est enfoncé dans le parent et pas plus épais que lui
+		var pr := sim.segs[sim.segs[i0].parent].radius
+		raw[0] -= (raw[1] - raw[0]).normalized() * pr * 0.5
+		r[0] = minf(r[0], pr * 0.95)
+	# Décimation : anneaux espacés d'au moins 2,5 rayons, sinon un tube épais se replie dans les virages
 	# (c'était le tronc « en morceaux »).
-	var keep: Array[int] = [0]
-	for m in range(1, raw.size()):
-		if m == raw.size() - 1 or raw[m].distance_to(raw[keep[-1]]) >= 1.2 * r[keep[-1]]:
-			keep.append(m)
-	# Courbe de Catmull-Rom par les points gardés : 3 anneaux par intervalle, tracé souple.
 	var pts: Array[Vector3] = [raw[0]]
 	var rad := PackedFloat32Array([r[0]])
 	var col := PackedColorArray([seg_col[i0]])
-	for m in keep.size() - 1:
-		var p0 := raw[keep[maxi(m - 1, 0)]]
-		var p1 := raw[keep[m]]
-		var p2 := raw[keep[m + 1]]
-		var p3 := raw[keep[mini(m + 2, keep.size() - 1)]]
-		var c := seg_col[chain[mini(keep[m + 1], chain.size() - 1)]]
-		for q in range(1, 4):
-			var u := q / 3.0
-			pts.append(0.5 * (2.0 * p1 + (p2 - p0) * u + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * u * u + (3.0 * p1 - p0 - 3.0 * p2 + p3) * u * u * u))
-			rad.append(lerpf(r[keep[m]], r[keep[m + 1]], u))
-			col.append(c)
+	for m in range(1, raw.size()):
+		if m == raw.size() - 1 or raw[m].distance_to(pts[-1]) >= 2.5 * rad[rad.size() - 1]:
+			pts.append(raw[m])
+			rad.append(r[m])
+			col.append(seg_col[chain[mini(m, chain.size() - 1)]])
+	# Lissage de Chaikin (coupe les angles sans jamais dépasser, contrairement à une spline)
+	for it in 3:
+		if pts.size() < 3:
+			break
+		var np: Array[Vector3] = [pts[0]]
+		var nr := PackedFloat32Array([rad[0]])
+		var nc := PackedColorArray([col[0]])
+		for m in pts.size() - 1:
+			np.append(pts[m] * 0.75 + pts[m + 1] * 0.25)
+			np.append(pts[m] * 0.25 + pts[m + 1] * 0.75)
+			nr.append(rad[m] * 0.75 + rad[m + 1] * 0.25)
+			nr.append(rad[m] * 0.25 + rad[m + 1] * 0.75)
+			nc.append(col[m])
+			nc.append(col[m + 1])
+		np.append(pts[-1])
+		nr.append(rad[rad.size() - 1])
+		nc.append(col[col.size() - 1])
+		pts = np
+		rad = nr
+		col = nc
 	var d := (pts[1] - pts[0]).normalized()
 	var a := _perp(d)
 	var v := 0.0
 	var prev := _ring(pts[0], d, a, rad[0], v, col[0])
+	_cap(prev, pts[0] - d * rad[0] * 0.5)
 	for m in range(1, pts.size()):
 		d = (pts[m] - pts[m - 1]).normalized()
 		if m + 1 < pts.size():
@@ -164,6 +179,21 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 		var cur := _ring(pts[m], d, a, maxf(rad[m], 0.0008), v, col[m])
 		_join(prev, cur)
 		prev = cur
+	_cap(prev, pts[-1] + d * maxf(rad[rad.size() - 1], 0.0008) * 0.6)
+
+
+## Ferme un bout de tube (pointe, coupe) par un petit cône : plus de tube creux visible.
+func _cap(ring: int, tip: Vector3) -> void:
+	var t0 := verts.size()
+	verts.append(tip)
+	norms.append((tip - verts[ring]).normalized())
+	uvs.append(uvs[ring])
+	uv2s.append(uv2s[ring])
+	cols.append(cols[ring])
+	for k in SIDES:
+		idx.append(ring + k)
+		idx.append(ring + k + 1)
+		idx.append(t0)
 
 
 ## Racines de surface provisoires, à la taille du tronc (en attendant les racines simulées).
