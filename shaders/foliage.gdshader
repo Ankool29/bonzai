@@ -1,5 +1,6 @@
 // Feuillage : petites images pixel art (PixelLab) toujours tournées vers la caméra, une par instance
-// de MultiMesh. INSTANCE_CUSTOM.x = variante dans l'atlas, COLOR = teinte (saison, ombre, sélection).
+// de MultiMesh. INSTANCE_CUSTOM.x = variante dans l'atlas, .y = rotation dans le plan de l'image,
+// COLOR = teinte (saison, ombre, sélection).
 shader_type spatial;
 render_mode cull_disabled, unshaded;
 
@@ -9,6 +10,8 @@ uniform float frames = 3.0;
 varying float frame;
 
 void vertex() {
+	float r = INSTANCE_CUSTOM.y;
+	VERTEX.xy = mat2(vec2(cos(r), sin(r)), vec2(-sin(r), cos(r))) * VERTEX.xy;
 	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(INV_VIEW_MATRIX[0], INV_VIEW_MATRIX[1], INV_VIEW_MATRIX[2], MODEL_MATRIX[3]);
 	MODELVIEW_MATRIX = MODELVIEW_MATRIX * mat4(
 		vec4(length(MODEL_MATRIX[0].xyz), 0.0, 0.0, 0.0),

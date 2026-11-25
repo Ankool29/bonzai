@@ -8,3 +8,11 @@
 - Pot rectangulaire en terre cuite, terre d'akadama texturée.
 - Textures générées avec PixelLab (16 générations) dans `textures/` : écorces orme et pin (128 px, éclairage cuit
   atténué), terre (128 px), atlas de 3 bouquets de feuilles d'orme (32 px) et de 3 touffes d'aiguilles (48 px).
+
+## Correctifs après essai (validés)
+- Feuilles d'orme : une feuille simple par nœud (atlas PixelLab de 3 feuilles sans tige, 1,6 cm), tournée au hasard
+  dans son plan ; fini les « branches collées ».
+- Pin : aiguilles par paires dessinées en géométrie (deux triangles fins croisés, trois verts) au lieu d'images.
+- Écorce procédurale en pixels (cellules de 2,5 mm, deux tons, taches orangées de l'orme, fissures allongées) au lieu
+  des textures PixelLab ; tracé des axes lissé en plus de l'épaisseur ; tubes à 12 faces.
+- Terre plus fine. Vérifié sur un aperçu calculé avec le portage Python (orme 2 et 8 ans, pin 4 ans).

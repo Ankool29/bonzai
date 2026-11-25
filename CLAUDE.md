@@ -14,9 +14,9 @@ Godot 4.7, GDScript, cible mobile (Galaxy S25 Ultra). Le joueur parle français 
 ## Plan du code
 - `scripts/tree_sim.gd` (`TreeSim`) : simulation de l'arbre (segments, bourgeons, grille d'ombre, poussées, élagage naturel, taille). Valeurs de l'orme par défaut, remplacées par une fiche espèce.
 - `scripts/species.gd` (`Species`) : fiches espèces (orme, pin).
-- `scripts/tree_mesh.gd` (`TreeMesh`) : maillage du bois (tubes texturés, épaisseur lissée) et feuillage (MultiMesh d'images tournées vers la caméra).
+- `scripts/tree_mesh.gd` (`TreeMesh`) : bois (tubes lissés, écorce procédurale), feuilles d'orme (MultiMesh d'images tournées vers la caméra), aiguilles de pin (géométrie).
 - `scripts/main.gd` : scène (rendu basse résolution dans un SubViewport, soleil, pot), caméra au doigt, sélection et coupe, boutons. Scène : `scenes/main.tscn`.
-- `shaders/bark.gdshader` (écorce et terre), `shaders/foliage.gdshader` (feuillage). Textures PixelLab dans `textures/` (ne jamais mettre la clé PixelLab dans le dépôt).
+- `shaders/bark.gdshader` (écorce procédurale), `shaders/soil.gdshader`, `shaders/foliage.gdshader`. Textures PixelLab dans `textures/` (ne jamais mettre la clé PixelLab dans le dépôt).
 
 ## Ailleurs
 - `docs/CONCEPTION.md` : décisions de conception. `docs/ETAPEx.md` : cahiers d'étape. Lis seulement le cahier de l'étape en cours.
