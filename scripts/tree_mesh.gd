@@ -1,165 +1,127 @@
 class_name TreeMesh
 extends RefCounted
-## Rendu voxel : l'arbre à l'instant t (semaines) est converti en cubes de 3 mm, dessinés en une seule
-## MultiMesh. Seule la surface des branches est remplie. Feuilles d'orme ou aiguilles de pin en touffes,
-## nebari provisoire au pied. Pot, terre et mousse en voxels aussi.
+## Rendu pixel art texturé de l'arbre à l'instant t (semaines) :
+## - chaque axe (tronc, branche, rameau) est un tube continu, épaisseur lissée, écorce texturée ;
+## - le feuillage est une MultiMesh de petites images tournées vers la caméra (variantes d'un atlas).
+## La scène est ensuite rendue en basse résolution par main.gd, d'où l'aspect pixel art.
 
-const V := 0.003                         # taille d'un voxel (m)
-const YOUNG := Color(0.5, 0.7, 0.25)     # pousse de l'année
-const SELECTED := Color(0.95, 0.2, 0.12)
-const WEAK := Color(0.9, 0.75, 0.2)      # branche qui s'affaiblit à l'ombre
-const DRY := Color(0.88, 0.85, 0.78)     # bois mort
-const LEAF := Color(0.3, 0.68, 0.18)
-const LEAF_AUTUMN := Color(0.95, 0.65, 0.12)
-const LEAF_LEN := 0.02                   # orme : petite feuille ovale (~2 cm)
-const NEEDLE := Color(0.1, 0.45, 0.25)
-const NEEDLE_LEN := 0.035                # pin noir en bonsaï : aiguilles de 3 à 5 cm
-const SHADER := preload("res://shaders/voxel.gdshader")
+const SIDES := 8
+const TILE := 0.12                         # une texture d'écorce couvre 12 cm de long
+const YOUNG := Color(0.55, 0.72, 0.3, 0.45)  # pousse de l'année : écorce verdie
+const SELECTED := Color(0.95, 0.2, 0.12, 0.7)
+const WEAK := Color(0.85, 0.7, 0.25, 0.45)   # branche qui s'affaiblit à l'ombre
+const DRY := Color(0.85, 0.82, 0.75, 0.7)    # bois mort
+const OLD := Color(1, 1, 1, 0)               # écorce seule
+const AUTUMN := Color(1.0, 0.72, 0.3)
 
 var sim: TreeSim
 var t := 0.0
-var vox := {}  # clé entière -> Color
+var verts := PackedVector3Array()
+var norms := PackedVector3Array()
+var uvs := PackedVector2Array()
+var cols := PackedColorArray()
+var idx := PackedInt32Array()
+var cards: Array = []  # [position, taille, variante, teinte]
 
 
-static func build(s: TreeSim, highlight: PackedInt32Array, time: float, leaves: bool) -> MultiMesh:
+## Renvoie [ArrayMesh du bois, MultiMesh du feuillage].
+static func build(s: TreeSim, highlight: PackedInt32Array, time: float, leaves: bool) -> Array:
 	var m := TreeMesh.new()
 	m.sim = s
 	m.t = time
-	m._tree(highlight, leaves)
-	return m._multimesh()
+	return m._build(highlight, leaves)
 
 
-static func material() -> ShaderMaterial:
+static func bark_material(tex: Texture2D) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
-	mat.shader = SHADER
+	mat.shader = preload("res://shaders/bark.gdshader")
+	mat.set_shader_parameter("tex", tex)
 	return mat
 
 
-## Pot émaillé, terre et touches de mousse (fixe).
-static func pot() -> MultiMesh:
-	var m := TreeMesh.new()
-	var glaze := Color(0.15, 0.4, 0.65)
-	var y := -0.06
-	while y <= 0.0:
-		var r := lerpf(0.1, 0.12, (y + 0.06) / 0.06)
-		var n := ceili(TAU * r / (V * 0.7))
-		for k in n:
-			var a := TAU * k / n
-			m._put(Vector3(cos(a) * r, y, sin(a) * r), glaze)
-		y += V
-	var x := -0.12
-	while x <= 0.12:
-		var z := -0.12
-		while z <= 0.12:
-			if Vector2(x, z).length() < 0.117:
-				var moss := sin(x * 90.0) * sin(z * 110.0) + sin((x + z) * 60.0) > 1.1
-				m._put(Vector3(x, -0.004, z), Color(0.35, 0.62, 0.2) if moss else Color(0.42, 0.3, 0.2))
-			z += V
-		x += V
-	return m._multimesh()
+static func foliage_material(tex: Texture2D, frames: int) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader = preload("res://shaders/foliage.gdshader")
+	mat.set_shader_parameter("atlas", tex)
+	mat.set_shader_parameter("frames", float(frames))
+	return mat
 
 
-func _key(p: Vector3) -> int:
-	return (floori(p.x / V) + 1024) | ((floori(p.y / V) + 1024) << 11) | ((floori(p.z / V) + 1024) << 22)
-
-
-func _put(p: Vector3, c: Color, force := false) -> void:
-	var k := _key(p)
-	if force or not vox.has(k):
-		vox[k] = c
-
-
-func _multimesh() -> MultiMesh:
-	var cube := BoxMesh.new()
-	cube.size = Vector3(V, V, V)
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.mesh = cube
-	mm.instance_count = vox.size()
-	var buf := PackedFloat32Array()
-	buf.resize(vox.size() * 16)
-	var i := 0
-	for k: int in vox:
-		var c: Color = vox[k]
-		var h := 0.93 + 0.14 * float((k * 2654435761) & 255) / 255.0  # légère variation par voxel
-		buf[i] = 1.0
-		buf[i + 3] = ((k & 2047) - 1024 + 0.5) * V
-		buf[i + 5] = 1.0
-		buf[i + 7] = (((k >> 11) & 2047) - 1024 + 0.5) * V
-		buf[i + 10] = 1.0
-		buf[i + 11] = (((k >> 22) & 2047) - 1024 + 0.5) * V
-		buf[i + 12] = c.r * h
-		buf[i + 13] = c.g * h
-		buf[i + 14] = c.b * h
-		buf[i + 15] = 1.0
-		i += 16
-	mm.buffer = buf
-	return mm
-
-
-func _tree(highlight: PackedInt32Array, leaves: bool) -> void:
+func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 	var n := sim.segs.size()
 	var marked := {}
 	for i in highlight:
 		marked[i] = true
 	var weak := PackedByteArray()
 	weak.resize(n)
+	var seg_f := PackedFloat32Array()
+	seg_f.resize(n)
+	var seg_col := PackedColorArray()
+	seg_col.resize(n)
 	for i in n:
 		var s := sim.segs[i]
 		weak[i] = 1 if s.weak > 0 or (s.parent >= 0 and weak[s.parent] == 1) else 0
-		var f := sim.growth(s, t)
-		if f <= 0.0:
-			continue
-		var col := YOUNG.lerp(sim.bark, clampf((t - s.born) / 52.0, 0.0, 1.0))
-		var sel := marked.has(i)
-		if sel:
+		seg_f[i] = sim.growth(s, t)
+		var col := YOUNG.lerp(OLD, clampf((t - s.born) / 52.0, 0.0, 1.0))
+		if marked.has(i):
 			col = SELECTED
 		elif s.dry:
 			col = DRY
 		elif weak[i] == 1:
-			col = col.lerp(WEAK, 0.7)
-		# Épaisseur lissée le long de l'axe : du rayon du segment à celui de son prolongement.
-		var ra := s.radius * (1.7 if i == 0 else 1.0)
-		var rb := sim.segs[s.main_child].radius if s.main_child >= 0 and f >= 1.0 else sim.tip_radius
-		var tip := s.start + (s.end - s.start) * f
-		_tube(s.start, tip, ra, minf(rb, s.radius), col, sel)
+			col = WEAK
+		seg_col[i] = col
+	for i in n:
+		var s := sim.segs[i]
+		if seg_f[i] <= 0.0:
+			continue
+		if s.parent < 0 or sim.segs[s.parent].main_child != i:
+			_axis(i, seg_f, seg_col)
 		if leaves and not s.dry:
-			var d := (s.end - s.start).normalized()
-			if sim.leaf_years > 0:
-				_needles(s, d, (tip - s.start).length(), weak[i] == 1, sel)
-			else:
-				_leaf(s, f, weak[i] == 1, sel)
+			_foliage(s, seg_f[i], weak[i] == 1, marked.has(i))
 	if n > 0:
 		_nebari()
+	return [_wood_mesh(), _cards_multimesh()]
 
 
-## Tube creux d'un rayon à l'autre : anneaux de voxels (un seul voxel quand c'est plus fin).
-func _tube(a: Vector3, b: Vector3, ra: float, rb: float, c: Color, force: bool) -> void:
-	var d := b - a
-	var l := d.length()
-	if l < 0.00001:
-		_put(a, c, force)
-		return
-	d /= l
-	var u := _perp(d)
-	var w := d.cross(u)
-	var steps := maxi(1, ceili(l / (V * 0.7)))
-	for i in steps + 1:
-		var f := float(i) / steps
-		var p := a + d * (l * f)
-		var r := lerpf(ra, rb, f)
-		if r < V * 2.5:
-			_put(p, c, force)
-		if r < V * 0.8:
-			continue
-		var m := ceili(TAU * r / (V * 0.7))
-		for k in m:
-			var ang := TAU * k / m
-			var o := u * cos(ang) + w * sin(ang)
-			_put(p + o * r, c, force)
-			if r > V * 1.5:
-				_put(p + o * (r - V * 0.8), c, force)
+## Un axe : la suite des prolongements depuis i0, en un seul tube à l'épaisseur lissée.
+func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> void:
+	var chain: Array[int] = []
+	var k := i0
+	while k >= 0 and seg_f[k] > 0.0:
+		chain.append(k)
+		if seg_f[k] < 1.0:
+			break
+		k = sim.segs[k].main_child
+	# rayons aux anneaux : début de chaque segment puis pointe, lissés pour effacer les à-coups
+	var r := PackedFloat32Array()
+	for j in chain:
+		r.append(sim.segs[j].radius)
+	r.append(sim.tip_radius)
+	for pass_i in 3:
+		var sm := r.duplicate()
+		for m in range(1, r.size() - 1):
+			sm[m] = (r[m - 1] + 2.0 * r[m] + r[m + 1]) * 0.25
+		r = sm
+	if i0 == 0:  # pied du tronc : évasement
+		r[0] *= 1.8
+	var s0 := sim.segs[i0]
+	var d := (s0.end - s0.start).normalized()
+	var a := _perp(d)
+	var v := 0.0
+	var prev := _ring(s0.start, d, a, r[0], v, seg_col[i0])
+	for m in chain.size():
+		var s := sim.segs[chain[m]]
+		var tip := s.start + (s.end - s.start) * seg_f[chain[m]]
+		d = (s.end - s.start).normalized()
+		if m + 1 < chain.size():
+			var nx := sim.segs[chain[m + 1]]
+			d = (d + (nx.end - nx.start).normalized()).normalized()
+		a = (a - d * a.dot(d)).normalized()  # transport parallèle : le tube ne se vrille pas
+		v += (tip - s.start).length() / TILE
+		var c := seg_col[chain[m + 1]] if m + 1 < chain.size() else seg_col[chain[m]]
+		var cur := _ring(tip, d, a, r[m + 1], v, c)
+		_join(prev, cur)
+		prev = cur
 
 
 ## Racines de surface provisoires, à la taille du tronc (en attendant les racines simulées).
@@ -168,11 +130,13 @@ func _nebari() -> void:
 	for k in 5:
 		var ang := k * TAU / 5.0 + 0.5 * sin(k * 7.1)
 		var dir := Vector3(cos(ang), 0, sin(ang))
-		var p0 := dir * r * 0.6 + Vector3.UP * 0.003
-		var p1 := dir * (r * 1.8 + 0.008)
-		var p2 := dir * (r * 2.8 + 0.018) + Vector3.DOWN * 0.004
-		_tube(p0, p1, r * 0.45, r * 0.25, sim.bark, false)
-		_tube(p1, p2, r * 0.25, r * 0.06, sim.bark, false)
+		var pts := [dir * r * 0.6 + Vector3.UP * 0.003, dir * (r * 1.8 + 0.008), dir * (r * 2.8 + 0.018) + Vector3.DOWN * 0.004]
+		var rads := [r * 0.5, r * 0.28, r * 0.06]
+		var prev := _ring(pts[0], dir, Vector3.UP, rads[0], 0.0, OLD)
+		for q in range(1, 3):
+			var cur := _ring(pts[q], (pts[q] - pts[q - 1]).normalized(), Vector3.UP, rads[q], q * 0.15, OLD)
+			_join(prev, cur)
+			prev = cur
 
 
 func _perp(d: Vector3) -> Vector3:
@@ -182,54 +146,87 @@ func _perp(d: Vector3) -> Vector3:
 	return a.normalized()
 
 
-## Feuille de l'orme : une par nœud, seulement sur les pousses de l'année (caduc).
-## Débourre avec la pousse, jaunit en octobre, tombe en novembre.
-func _leaf(s: TreeSim.Seg, f: float, weak: bool, selected: bool) -> void:
-	if floori(s.born / 52.0) != floori(t / 52.0):
-		return
-	var w := fposmod(t, 52.0)
-	var h := fposmod(sin(s.end.x * 91.3 + s.end.y * 13.7 + s.end.z * 47.1) * 43758.5, 1.0)  # hasard fixe par feuille
-	if w > 44.0 + h * 4.0:  # chute étalée sur novembre
-		return
-	if weak and h < 0.4:  # branche affaiblie : feuillage clairsemé
-		return
-	var col := LEAF.lerp(LEAF_AUTUMN, clampf((w - 40.0) / 5.0, 0.0, 1.0))
-	if weak:
-		col = col.lerp(WEAK, 0.6)
-	if selected:
-		col = SELECTED
-	var n := (Vector3.UP * 0.8 + s.lat_dir * 0.2).normalized()
-	var u := (s.lat_dir - n * s.lat_dir.dot(n)).normalized().rotated(n, (h - 0.5) * 0.8)
-	var v := n.cross(u)
-	var l := LEAF_LEN * f
-	var p := s.end + s.lat_dir * 0.002
-	var x := 0.0
-	while x <= l:
-		var half := l * 0.25 * sin(PI * x / maxf(l, 0.0001))
-		var y := -half
-		while y <= half + 0.0001:
-			_put(p + u * x + v * y, col, selected)
-			y += V * 0.8
-		x += V * 0.8
-
-
-## Aiguilles de pin : par paires, le long des pousses des dernières années (persistantes).
-func _needles(s: TreeSim.Seg, d: Vector3, l: float, weak: bool, selected: bool) -> void:
-	if t - s.born > sim.leaf_years * 52:
-		return
-	var col := NEEDLE.lerp(WEAK, 0.6) if weak else NEEDLE
-	if selected:
-		col = SELECTED
-	var a := _perp(d)
+## Anneau de SIDES+1 sommets (le dernier double le premier pour fermer la texture).
+## La texture fait un nombre pair de tours (répétition en miroir sans raccord), environ 1 par 12 cm.
+func _ring(c: Vector3, d: Vector3, a: Vector3, r: float, v: float, col: Color) -> int:
+	a = (a - d * a.dot(d)).normalized()
 	var b := d.cross(a)
-	var pairs := clampi(int(l / 0.004), 1, 6)
-	var nl := NEEDLE_LEN * sim.growth(s, t)
-	var steps := maxi(1, ceili(nl / (V * 0.9)))
-	for k in pairs:
-		var p := s.start + d * l * (k + 0.5) / pairs
-		var ang := s.phase + k * 2.4
-		for side in [0.0, PI]:
-			var r := a * cos(ang + side) + b * sin(ang + side)
-			var dir := (d * 0.6 + r).normalized()
-			for j in range(1, steps + 1):
-				_put(p + dir * (nl * j / steps), col, selected)
+	var turns := 2.0 * maxf(1.0, roundf(TAU * r / (2.0 * TILE)))
+	var base := verts.size()
+	for k in SIDES + 1:
+		var ang := TAU * k / SIDES
+		var nrm := a * cos(ang) + b * sin(ang)
+		verts.append(c + nrm * r)
+		norms.append(nrm)
+		uvs.append(Vector2(turns * k / SIDES, v))
+		cols.append(col)
+	return base
+
+
+func _join(r0: int, r1: int) -> void:
+	for k in SIDES:
+		for q in [r0 + k, r1 + k, r0 + k + 1, r0 + k + 1, r1 + k, r1 + k + 1]:
+			idx.append(q)
+
+
+## Feuillage d'un segment : bouquet de feuilles (orme, pousses de l'année) ou touffe d'aiguilles (pin).
+func _foliage(s: TreeSim.Seg, f: float, weak: bool, selected: bool) -> void:
+	var h := fposmod(sin(s.end.x * 91.3 + s.end.y * 13.7 + s.end.z * 47.1) * 43758.5, 1.0)  # hasard fixe
+	var col := Color.WHITE
+	if sim.leaf_years > 0:
+		if t - s.born > sim.leaf_years * 52:
+			return
+		# touffes au bout des pousses, et une partie le long des rameaux garnis
+		var at_tip := s.term_bud or (s.main_child >= 0 and sim.segs[s.main_child].term_bud)
+		if not at_tip and h > 0.3:
+			return
+	else:
+		if floori(s.born / 52.0) != floori(t / 52.0):
+			return
+		var w := fposmod(t, 52.0)
+		if w > 44.0 + h * 4.0:  # chute étalée sur novembre
+			return
+		col = Color.WHITE.lerp(AUTUMN, clampf((w - 40.0) / 5.0, 0.0, 1.0))
+	if weak:
+		if h < 0.4:
+			return
+		col *= Color(1.0, 0.9, 0.55)
+	# ombre : les bouquets à l'intérieur de la couronne sont plus sombres
+	col *= lerpf(0.6, 1.0, clampf(s.light / maxf(s.count, 1) * 1.5, 0.0, 1.0))
+	if selected:
+		col = Color(1.0, 0.35, 0.3)
+	var p := s.end + s.lat_dir * 0.004 + Vector3.DOWN * 0.004
+	cards.append([p, sim.foliage_size * f, floori(h * sim.foliage_frames) % sim.foliage_frames, col])
+
+
+func _wood_mesh() -> ArrayMesh:
+	var mesh := ArrayMesh.new()
+	if verts.is_empty():
+		return mesh
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = norms
+	arr[Mesh.ARRAY_TEX_UV] = uvs
+	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_INDEX] = idx
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return mesh
+
+
+func _cards_multimesh() -> MultiMesh:
+	var quad := QuadMesh.new()
+	quad.size = Vector2(1, 1)
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.use_custom_data = true
+	mm.mesh = quad
+	mm.instance_count = cards.size()
+	for i in cards.size():
+		var c: Array = cards[i]
+		var sz: float = c[1]
+		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3(sz, sz, sz)), c[0]))
+		mm.set_instance_color(i, c[3])
+		mm.set_instance_custom_data(i, Color(c[2], 0, 0, 0))
+	return mm

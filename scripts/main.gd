@@ -1,13 +1,17 @@
 extends Node
-## Un bonsaï qui pousse et qu'on taille. Rendu voxel (cubes de 3 mm, voir TreeMesh).
+## Un bonsaï qui pousse et qu'on taille. Rendu pixel art texturé : bois et feuillage texturés
+## (PixelLab), scène rendue en basse résolution (SubViewport) puis agrandie sans lissage.
 ## Rotation au doigt, pincer pour zoomer.
 
-const REBUILD_MS := 250        # pendant que le temps défile, l'arbre est revoxelisé au plus 4 fois/s
+const TARGET_WIDTH := 360.0    # largeur du rendu en pixels
+const REBUILD_MS := 250        # pendant que le temps défile, l'arbre est reconstruit au plus 4 fois/s
 
 var sim := TreeSim.new()
-var tree_mi := MultiMeshInstance3D.new()
+var wood_mi := MeshInstance3D.new()
+var leaves_mi := MultiMeshInstance3D.new()
 var cam := Camera3D.new()
 var world := Node3D.new()
+var shrink := 4
 var yaw := 0.6
 var pitch := 0.25
 var dist := 0.35
@@ -32,28 +36,73 @@ var cut_btn: Button
 
 
 func _ready() -> void:
-	ui_scale = get_viewport().get_visible_rect().size.x / 720.0
-	add_child(world)
+	var screen := get_viewport().get_visible_rect().size
+	ui_scale = screen.x / 720.0
+	shrink = maxi(1, roundi(screen.x / TARGET_WIDTH))
+	var box := SubViewportContainer.new()
+	box.stretch = true
+	box.stretch_shrink = shrink
+	box.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(box)
+	var vp := SubViewport.new()
+	box.add_child(vp)
+	vp.add_child(world)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.93, 0.9, 0.84)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.75, 0.75, 0.8)
+	env.ambient_light_energy = 0.6
 	var we := WorldEnvironment.new()
 	we.environment = env
 	world.add_child(we)
-	sim.reset()
-	var mat := TreeMesh.material()
-	tree_mi.material_override = mat
-	world.add_child(tree_mi)
-	var pot := MultiMeshInstance3D.new()
-	pot.multimesh = TreeMesh.pot()
-	pot.material_override = mat
-	world.add_child(pot)
+	var sun := DirectionalLight3D.new()
+	sun.rotation_degrees = Vector3(-55, 35, 0)
+	sun.light_energy = 1.1
+	sun.shadow_enabled = true
+	world.add_child(sun)
+	world.add_child(wood_mi)
+	world.add_child(leaves_mi)
+	_add_pot()
 	cam.near = 0.005
 	cam.far = 20.0
 	cam.fov = 45.0
 	world.add_child(cam)
 	_build_ui()
+	_set_species(Species.ELM)
 	_refresh()
+
+
+## Pot rectangulaire en terre cuite, terre d'akadama texturée.
+func _add_pot() -> void:
+	var pot := MeshInstance3D.new()
+	var b := BoxMesh.new()
+	b.size = Vector3(0.32, 0.05, 0.22)
+	pot.mesh = b
+	pot.position.y = -0.026
+	var pm := StandardMaterial3D.new()
+	pm.albedo_color = Color(0.5, 0.27, 0.2)
+	pm.roughness = 1.0
+	pot.material_override = pm
+	world.add_child(pot)
+	var soil := MeshInstance3D.new()
+	var pl := PlaneMesh.new()
+	pl.size = Vector2(0.3, 0.2)
+	soil.mesh = pl
+	soil.position.y = 0.0005
+	var sm := TreeMesh.bark_material(load("res://textures/soil.png"))
+	sm.set_shader_parameter("use_vertex_color", false)
+	sm.set_shader_parameter("scale", Vector2(3, 2))
+	soil.material_override = sm
+	world.add_child(soil)
+
+
+func _set_species(species: Dictionary) -> void:
+	sim.reset(randi(), species)
+	wood_mi.material_override = TreeMesh.bark_material(load(sim.bark_tex))
+	leaves_mi.material_override = TreeMesh.foliage_material(load(sim.foliage_tex), sim.foliage_frames)
 
 
 func _build_ui() -> void:
@@ -141,7 +190,7 @@ func _toggle_leaves() -> void:
 
 
 func _new_tree(species: Dictionary) -> void:
-	sim.reset(randi(), species)
+	_set_species(species)
 	selected = -1
 	layout = sim.layout
 	pending = 0
@@ -152,7 +201,9 @@ func _new_tree(species: Dictionary) -> void:
 
 func _refresh() -> void:
 	var hl := sim.subtree(selected) if selected > 0 else PackedInt32Array()
-	tree_mi.multimesh = TreeMesh.build(sim, hl, sim.week + frac, show_leaves)
+	var built := TreeMesh.build(sim, hl, sim.week + frac, show_leaves)
+	wood_mi.mesh = built[0]
+	leaves_mi.multimesh = built[1]
 	last_build = Time.get_ticks_msec()
 	cut_btn.disabled = selected <= 0
 	var w := sim.week % 52
@@ -220,8 +271,9 @@ func _pinch_len() -> float:
 
 ## Sélectionne le segment le plus proche du doigt à l'écran.
 func _select_at(pos: Vector2) -> void:
+	pos /= shrink  # coordonnées du rendu basse résolution
 	var best := -1
-	var best_d := 40.0 * ui_scale
+	var best_d := 40.0 * ui_scale / shrink
 	for i in sim.segs.size():
 		var s := sim.segs[i]
 		if sim.growth(s, sim.week + frac) <= 0.0:
