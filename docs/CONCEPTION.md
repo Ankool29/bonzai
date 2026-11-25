@@ -55,5 +55,8 @@ de l'arbre : pousse selon l'espèce, réaction à la taille et au ligaturage.
 - Pots en 3D avec le même rendu. PixelLab pour interface, icônes, décors, personnages.
 - Palette commune imposée à la 3D et à PixelLab.
 
+## Racines (plus tard)
+- Racines simulées comme les branches (vers l'eau et l'espace libre), épaississement, nebari ; racines sur pierre (ishitsuki).
+
 ## Ordre
 1. L'arbre (simulation puis rendu). 2. L'habillage. Valeur et économie des arbres : plus tard.
