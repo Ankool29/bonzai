@@ -21,3 +21,11 @@ Terreau, eau, engrais, fil, autres espèces, pixel art, sauvegarde, temps réel,
 - Sans taille, l'arbre prend une forme d'orme plausible en 5 à 10 ans de jeu.
 - Après une taille, l'arbre repart de bourgeons proches de la coupe et se densifie.
 - Fluide sur le téléphone, même avec un arbre de 10 ans.
+
+## Étape 1 bis — adapter au bonsaï (validé)
+- Lumière : seul l'arbre se fait de l'ombre, côtés ouverts ; plus de « boîte » qui limite la taille.
+- La taille est limitée par le pot (vigueur réduite quand l'arbre devient gros pour son pot).
+- Pousse de base plus faible qu'en pleine terre (les soins la moduleront plus tard).
+- Dépérissement progressif : bilan de lumière en fin d'été ; une branche trop à l'ombre jaunit,
+  sèche au deuxième été de suite et reste en bois mort à couper. Éclaircir au-dessus la sauve.
+- Pousse visible : le temps défile à l'écran et les entre-nœuds s'allongent l'un après l'autre.

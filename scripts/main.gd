@@ -9,6 +9,9 @@ var pitch := 0.25
 var dist := 0.35
 var target := Vector3(0, 0.05, 0)
 var selected := -1
+var pending := 0      # semaines restant à jouer
+var frac := 0.0       # avancement dans la semaine en cours (pour voir les pousses s'allonger)
+var speed := 1.0      # semaines par seconde
 
 var touches := {}
 var tap_start := Vector2.ZERO
@@ -108,10 +111,22 @@ func _button(parent: Control, text: String, cb: Callable) -> Button:
 	return b
 
 
+## Le temps défile à l'écran : ~0,7 s pour une semaine, ~2 s pour une saison, ~5 s pour un an.
 func _advance(weeks: int) -> void:
-	for i in weeks:
+	pending += weeks
+	speed = maxf(speed if pending > weeks else 0.0, weeks / (0.6 + weeks * 0.08))
+
+
+func _process(delta: float) -> void:
+	if pending <= 0:
+		return
+	frac += delta * speed
+	while frac >= 1.0 and pending > 0:
 		sim.step_week()
-	selected = -1  # les indices changent quand des branches meurent
+		pending -= 1
+		frac -= 1.0
+	if pending == 0:
+		frac = 0.0
 	_refresh()
 
 
@@ -124,13 +139,15 @@ func _cut() -> void:
 func _new_tree() -> void:
 	sim.reset(randi())
 	selected = -1
+	pending = 0
+	frac = 0.0
 	dist = 0.35
 	_refresh()
 
 
 func _refresh() -> void:
 	var hl := sim.subtree(selected) if selected > 0 else PackedInt32Array()
-	tree_mi.mesh = TreeMesh.build(sim, hl)
+	tree_mi.mesh = TreeMesh.build(sim, hl, sim.week + frac)
 	cut_btn.disabled = selected <= 0
 	var w := sim.week % 52
 	var season := "hiver"
@@ -201,6 +218,8 @@ func _select_at(pos: Vector2) -> void:
 	var best_d := 40.0 * ui_scale
 	for i in sim.segs.size():
 		var s := sim.segs[i]
+		if sim.growth(s, sim.week + frac) <= 0.0:
+			continue
 		if cam.is_position_behind(s.start) or cam.is_position_behind(s.end):
 			continue
 		var a := cam.unproject_position(s.start)
