@@ -16,9 +16,13 @@ const NEVER := 1.0e9                         # date de disparition : jamais
 var sim: TreeSim
 var t := 0.0   # fin de période : état du maillage
 var t0 := 0.0  # début de période
-var wc := [PackedFloat32Array(), PackedFloat32Array(), PackedFloat32Array()]  # CUSTOM0-2 du bois
-var lc := [PackedFloat32Array(), PackedFloat32Array()]  # CUSTOM0-1 des feuilles
-var nc := [PackedFloat32Array(), PackedFloat32Array()]  # CUSTOM0-1 des aiguilles
+var wc0 := PackedFloat32Array()  # CUSTOM0-2 du bois (4 flottants par sommet)
+var wc1 := PackedFloat32Array()
+var wc2 := PackedFloat32Array()
+var lc0 := PackedFloat32Array()  # CUSTOM0-1 des feuilles
+var lc1 := PackedFloat32Array()
+var nc0 := PackedFloat32Array()  # CUSTOM0-1 des aiguilles
+var nc1 := PackedFloat32Array()
 var verts := PackedVector3Array()
 var norms := PackedVector3Array()
 var uvs := PackedVector2Array()
@@ -219,9 +223,10 @@ func _cap(ring: int, tip: Vector3, flip: bool) -> void:
 	uvs.append(uvs[ring])
 	uv2s.append(uv2s[ring])
 	cols.append(cols[ring])
-	for q in 3:
-		for e in 4:
-			wc[q].append(wc[q][ring * 4 + e])
+	for e in 4:
+		wc0.append(wc0[ring * 4 + e])
+		wc1.append(wc1[ring * 4 + e])
+		wc2.append(wc2[ring * 4 + e])
 	for k in SIDES:
 		idx.append(ring + k + (1 if flip else 0))
 		idx.append(ring + k + (0 if flip else 1))
@@ -274,9 +279,9 @@ func _ring(c: Vector3, d: Vector3, a: Vector3, r: float, v: float, col: Color, a
 		uvs.append(Vector2(float(k) / SIDES, v))
 		uv2s.append(Vector2(cells, 0))
 		cols.append(col)
-		wc[0].append_array([a0.x, a0.y, a0.z, a0.w])
-		wc[1].append_array([c.x, c.y, c.z, vanish])
-		wc[2].append_array([a2.x, a2.y, a2.z, a2.w])
+		wc0.append_array([a0.x, a0.y, a0.z, a0.w])
+		wc1.append_array([c.x, c.y, c.z, vanish])
+		wc2.append_array([a2.x, a2.y, a2.z, a2.w])
 	return base
 
 
@@ -409,8 +414,8 @@ func _tri(p0: Vector3, p1: Vector3, p2: Vector3, nrm: Vector3, col: Color) -> vo
 		lverts.append(q)
 		lnorms.append(nrm)
 		lcols.append(col)
-		lc[0].append_array([a0.x, a0.y, a0.z, a0.w])
-		lc[1].append_array([at.x, at.y, at.z, 0.0])
+		lc0.append_array([a0.x, a0.y, a0.z, a0.w])
+		lc1.append_array([at.x, at.y, at.z, 0.0])
 
 
 ## Aiguilles de pin par paires le long de la pousse : chacune = deux triangles fins croisés,
@@ -439,8 +444,8 @@ func _needles(s: TreeSim.Seg, h: float, weak: bool, selected: bool, gone: float)
 					nverts.append(q)
 					ncols.append(col)
 					# l'aiguille pousse quand la pousse atteint son niveau, depuis sa base
-					nc[0].append_array([s.born + s.grow_time * (k + 0.5) / pairs, s.grow_time, gone, 0.0])
-					nc[1].append_array([p.x, p.y, p.z, 0.0])
+					nc0.append_array([s.born + s.grow_time * (k + 0.5) / pairs, s.grow_time, gone, 0.0])
+					nc1.append_array([p.x, p.y, p.z, 0.0])
 
 
 func _wood_mesh() -> ArrayMesh:
@@ -455,7 +460,7 @@ func _wood_mesh() -> ArrayMesh:
 	arr[Mesh.ARRAY_TEX_UV2] = uv2s
 	arr[Mesh.ARRAY_COLOR] = cols
 	arr[Mesh.ARRAY_INDEX] = idx
-	var flags := _custom(arr, wc)
+	var flags := _custom(arr, [wc0, wc1, wc2])
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, flags)
 	return mesh
 
@@ -469,7 +474,7 @@ func _leaf_mesh() -> ArrayMesh:
 	arr[Mesh.ARRAY_VERTEX] = lverts
 	arr[Mesh.ARRAY_NORMAL] = lnorms
 	arr[Mesh.ARRAY_COLOR] = lcols
-	var flags := _custom(arr, lc)
+	var flags := _custom(arr, [lc0, lc1])
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, flags)
 	return mesh
 
@@ -486,7 +491,7 @@ func _needle_mesh() -> ArrayMesh:
 	arr[Mesh.ARRAY_VERTEX] = nverts
 	arr[Mesh.ARRAY_NORMAL] = norm
 	arr[Mesh.ARRAY_COLOR] = ncols
-	var flags := _custom(arr, nc)
+	var flags := _custom(arr, [nc0, nc1])
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, flags)
 	return mesh
 
