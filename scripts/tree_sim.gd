@@ -34,7 +34,8 @@ class Seg:
 	var v_term := 0.0
 	var v_lat := 0.0
 
-# --- Paramètres de l'espèce : orme de Chine (seront sortis dans une fiche espèce plus tard) ---
+# --- Paramètres de l'espèce (valeurs de l'orme ; remplacés par la fiche de scripts/species.gd) ---
+var name := "Orme de Chine"
 var internode := 0.018
 var alpha := 1.6              # vigueur totale = alpha × lumière captée
 var apical := 0.53            # part de vigueur donnée à l'axe principal (λ)
@@ -56,9 +57,10 @@ var release_nodes := 3        # nœuds sous la coupe qui profitent de la levée 
 var release_boost := 3.0
 var sprout_excess := 1.4      # réserves / lumière au-delà duquel des rejets apparaissent
 var max_sprouts := 4
-
+var whorl := 0                # >0 : bourgeons seulement en couronne au bout de la pousse (pin)
+var leaf_years := 0           # 0 : caduc ; sinon durée de vie des aiguilles (le réveil n'a lieu que là où il y en a)
 ## Semaine de l'année -> force de la poussée (printemps puis petite poussée d'été).
-const FLUSHES := {15: 1.0, 18: 1.0, 21: 0.8, 27: 0.5}
+var flushes := {15: 1.0, 18: 1.0, 21: 0.8, 27: 0.5}
 const GROW_WEEKS := 3.0       # durée d'allongement d'une pousse (écart entre deux poussées)
 const DIEBACK_WEEK := 35      # fin d'été : bilan de lumière des branches
 
@@ -80,7 +82,9 @@ var layout := 0               # change quand des segments sont retirés (les ind
 var rng := RandomNumberGenerator.new()
 
 
-func reset(seed_value: int = 1) -> void:
+func reset(seed_value: int = 1, species: Dictionary = Species.ELM) -> void:
+	for k in species:
+		set(k, species[k])
 	rng.seed = seed_value
 	segs.clear()
 	reserve = 0.0
@@ -96,8 +100,8 @@ func reset(seed_value: int = 1) -> void:
 func step_week() -> void:
 	week += 1
 	var w := week % 52
-	if FLUSHES.has(w):
-		_flush(FLUSHES[w])
+	if flushes.has(w):
+		_flush(flushes[w])
 	if w == DIEBACK_WEEK:
 		_dieback()
 	if w == 0:
@@ -116,7 +120,8 @@ func prune(i: int) -> bool:
 		if j < 0:
 			break
 		var p := segs[j]
-		if not p.dry and not p.lat_bud and p.lat_child < 0 and rng.randf() < backbud_chance:
+		var leafy := leaf_years == 0 or week - p.born < leaf_years * 52
+		if leafy and not p.dry and not p.lat_bud and p.lat_child < 0 and rng.randf() < backbud_chance:
 			p.phase = rng.randf() * TAU
 			_set_lateral(p, (p.end - p.start).normalized())
 		if k < release_nodes:
@@ -182,7 +187,7 @@ func _end_of_year() -> void:
 ## taille sévère), des bourgeons adventifs percent sur le vieux bois, surtout en bas du tronc.
 func _sprouts() -> bool:
 	var excess := reserve / maxf(segs[0].light, 0.01)
-	if excess < sprout_excess or segs.size() < 10:
+	if max_sprouts == 0 or excess < sprout_excess or segs.size() < 10:
 		return false
 	var n := mini(int((excess - sprout_excess) * 4.0) + 1, max_sprouts)
 	for k in n:
@@ -325,8 +330,29 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 			first = idx
 		else:
 			segs[prev].main_child = idx
+		if whorl > 0:
+			s.lat_bud = false  # pin : pas de bourgeon le long de la chandelle
 		prev = idx
 		p = s.end
+	if whorl > 0 and not spur:
+		# Couronne de bourgeons au bout de la pousse : entre-nœuds minuscules en spirale.
+		var t0 := segs[prev].born + segs[prev].grow_time
+		for k in whorl:
+			var s := Seg.new()
+			s.parent = prev
+			s.start = p
+			s.end = p + d * internode * 0.06
+			s.radius = tip_radius
+			s.grow_time = 0.2
+			s.born = t0
+			phase += deg_to_rad(137.5)
+			s.phase = phase
+			_set_lateral(s, d)
+			s.lat_q = rng.randf_range(0.6, 1.4)
+			segs.append(s)
+			segs[prev].main_child = segs.size() - 1
+			prev = segs.size() - 1
+			p = s.end
 	segs[prev].term_bud = true
 	return first
 

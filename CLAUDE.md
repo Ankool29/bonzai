@@ -12,8 +12,9 @@ Godot 4.7, GDScript, cible mobile (Galaxy S25 Ultra). Le joueur parle français 
 - Mets à jour `docs/A_CORRIGER.md` quand un défaut connu est corrigé ou découvert.
 
 ## Plan du code
-- `scripts/tree_sim.gd` (`TreeSim`) : simulation de l'arbre (segments, bourgeons, grille d'ombre, poussées, élagage naturel, taille). Paramètres de l'espèce en tête de fichier.
-- `scripts/tree_mesh.gd` (`TreeMesh`) : maillage de l'arbre (cylindres, couleur selon l'âge, surbrillance).
+- `scripts/tree_sim.gd` (`TreeSim`) : simulation de l'arbre (segments, bourgeons, grille d'ombre, poussées, élagage naturel, taille). Valeurs de l'orme par défaut, remplacées par une fiche espèce.
+- `scripts/species.gd` (`Species`) : fiches espèces (orme, pin).
+- `scripts/tree_mesh.gd` (`TreeMesh`) : maillage de l'arbre (cylindres, feuilles d'orme, aiguilles de pin, surbrillance).
 - `scripts/main.gd` : scène, caméra au doigt, sélection et coupe, boutons. Scène : `scenes/main.tscn`.
 
 ## Ailleurs
