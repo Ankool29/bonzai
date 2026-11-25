@@ -12,6 +12,7 @@ var selected := -1
 var pending := 0      # semaines restant à jouer
 var frac := 0.0       # avancement dans la semaine en cours (pour voir les pousses s'allonger)
 var speed := 1.0      # semaines par seconde
+var show_leaves := true
 
 var touches := {}
 var tap_start := Vector2.ZERO
@@ -95,6 +96,7 @@ func _build_ui() -> void:
 	var row2 := HBoxContainer.new()
 	box.add_child(row2)
 	cut_btn = _button(row2, "Couper", _cut)
+	_button(row2, "Feuilles", _toggle_leaves)
 	_button(row2, "Nouvelle pousse", _new_tree)
 	var bottom := Control.new()  # marge pour la barre de gestes du téléphone
 	bottom.custom_minimum_size.y = 40 * ui_scale
@@ -136,6 +138,11 @@ func _cut() -> void:
 		_refresh()
 
 
+func _toggle_leaves() -> void:
+	show_leaves = not show_leaves
+	_refresh()
+
+
 func _new_tree() -> void:
 	sim.reset(randi())
 	selected = -1
@@ -147,7 +154,7 @@ func _new_tree() -> void:
 
 func _refresh() -> void:
 	var hl := sim.subtree(selected) if selected > 0 else PackedInt32Array()
-	tree_mi.mesh = TreeMesh.build(sim, hl, sim.week + frac)
+	tree_mi.mesh = TreeMesh.build(sim, hl, sim.week + frac, show_leaves)
 	cut_btn.disabled = selected <= 0
 	var w := sim.week % 52
 	var season := "hiver"
