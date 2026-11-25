@@ -3,7 +3,10 @@ class_name Species
 
 const ELM := {
 	"name": "Orme de Chine",
-	"bark": Color(0.55, 0.5, 0.45),
+	"bark_tex": "res://textures/bark_elm.png",
+	"foliage_tex": "res://textures/leaves_elm.png",
+	"foliage_frames": 3,
+	"foliage_size": 0.03,
 	"internode": 0.018,
 	"alpha": 1.6,
 	"apical": 0.53,
@@ -27,7 +30,10 @@ const ELM := {
 ## forte dominance apicale, aiguilles 3 ans, presque pas de rebourgeonnage sur le vieux bois.
 const PINE := {
 	"name": "Pin noir du Japon",
-	"bark": Color(0.45, 0.36, 0.31),
+	"bark_tex": "res://textures/bark_pine.png",
+	"foliage_tex": "res://textures/needles_pine.png",
+	"foliage_frames": 3,
+	"foliage_size": 0.045,
 	"internode": 0.02,
 	"alpha": 1.6,
 	"apical": 0.62,
