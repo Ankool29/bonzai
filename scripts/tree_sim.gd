@@ -21,7 +21,10 @@ class Seg:
 	var grow_time := 1.0     # semaines pour atteindre sa longueur
 	var dead := false        # à retirer du tableau
 	var dry := false         # bois mort resté sur l'arbre
+	var dry_week := 0
 	var weak := 0            # étés passés trop à l'ombre
+	var lat_q := 1.0         # qualité du bourgeon axillaire (puis vigueur propre du rameau latéral)
+	var release := 1.0       # bonus des bourgeons de ce nœud après une coupe (levée de dominance)
 	# recalculés à chaque poussée
 	var light := 0.0
 	var count := 0
@@ -48,7 +51,13 @@ var shed_ratio := 0.04        # lumière par entre-nœud sous laquelle une branc
 var bud_life := 52 * 8        # durée de vie d'un bourgeon dormant (semaines)
 var backbud_nodes := 4        # nœuds sous la coupe qui peuvent rebourgeonner
 var backbud_chance := 0.6
-var capacity := 1500          # entre-nœuds vivants que le pot peut nourrir (en attendant les racines)
+var pot_q := 120.0            # lumière au-delà de laquelle les racines du pot ne suivent plus
+var spur_min := 0.5           # vigueur minimale pour un rameau court…
+var spur_light := 0.7         # …et lumière minimale sur le bourgeon
+var release_nodes := 3        # nœuds sous la coupe qui profitent de la levée de dominance
+var release_boost := 3.0
+var sprout_excess := 1.4      # réserves / lumière au-delà duquel des rejets apparaissent
+var max_sprouts := 4
 
 ## Semaine de l'année -> force de la poussée (printemps puis petite poussée d'été).
 const FLUSHES := {15: 1.0, 18: 1.0, 21: 0.8, 27: 0.5}
@@ -68,12 +77,15 @@ var shadow := PackedFloat32Array()
 
 var segs: Array[Seg] = []
 var week := 0
+var reserve := 0.0            # vigueur que les racines peuvent fournir (suit la lumière avec retard)
+var layout := 0               # change quand des segments sont retirés (les indices changent)
 var rng := RandomNumberGenerator.new()
 
 
 func reset(seed_value: int = 1) -> void:
 	rng.seed = seed_value
 	segs.clear()
+	reserve = 0.0
 	week = 10  # début mars, année 1
 	var s := Seg.new()
 	s.end = Vector3(0, internode * 2.0, 0)
@@ -91,7 +103,7 @@ func step_week() -> void:
 	if w == DIEBACK_WEEK:
 		_dieback()
 	if w == 0:
-		_age_buds()
+		_end_of_year()
 
 
 ## Coupe le segment i et tout ce qu'il porte. Renvoie false pour la base (on ne coupe pas tout l'arbre).
@@ -100,7 +112,8 @@ func prune(i: int) -> bool:
 		return false
 	var j := segs[i].parent
 	_kill(i)
-	# La coupe réveille des bourgeons (dormants ou adventifs) sur les nœuds juste en dessous.
+	# La coupe lève la dominance apicale : les bourgeons juste en dessous (dormants ou adventifs)
+	# se réveillent et prennent de la vigueur l'année suivante.
 	for k in backbud_nodes:
 		if j < 0:
 			break
@@ -108,6 +121,8 @@ func prune(i: int) -> bool:
 		if not p.dry and not p.lat_bud and p.lat_child < 0 and rng.randf() < backbud_chance:
 			p.phase = rng.randf() * TAU
 			_set_lateral(p, (p.end - p.start).normalized())
+		if k < release_nodes:
+			p.release = release_boost
 		j = p.parent
 	_compact()
 	_basipetal()
@@ -139,17 +154,56 @@ func height() -> float:
 func _flush(strength: float) -> void:
 	_compute_shadow()
 	_basipetal()
+	if _sprouts():
+		_basipetal()
 	_allocate(strength)
 	_grow()
 	_basipetal()
 
 
-func _age_buds() -> void:
+func _end_of_year() -> void:
 	for s in segs:
+		s.release = 1.0
 		if s.lat_bud:
 			s.lat_bud_age += 52
 			if s.lat_bud_age > bud_life:
 				s.lat_bud = false
+	reserve = lerpf(reserve, segs[0].light, 0.5)  # les racines s'ajustent en un an ou deux
+	# Les rameaux morts fins tombent d'eux-mêmes au bout d'un an ; le gros bois mort reste.
+	var fell := false
+	for i in range(1, segs.size()):
+		var s := segs[i]
+		if s.dry and not s.dead and not segs[s.parent].dry and s.radius < 0.004 and week - s.dry_week >= 40:
+			_kill(i)
+			fell = true
+	if fell:
+		_compact()
+
+
+## Rejets : quand les racines fournissent bien plus que la couronne ne peut employer (après une
+## taille sévère), des bourgeons adventifs percent sur le vieux bois, surtout en bas du tronc.
+func _sprouts() -> bool:
+	var excess := reserve / maxf(segs[0].light, 0.01)
+	if excess < sprout_excess or segs.size() < 10:
+		return false
+	var n := mini(int((excess - sprout_excess) * 4.0) + 1, max_sprouts)
+	for k in n:
+		var best := -1
+		for tries in 10:  # parmi quelques nœuds de vieux bois, le plus gros (bas du tronc)
+			var c := rng.randi_range(0, segs.size() - 1)
+			var s := segs[c]
+			if s.dry or s.lat_bud or s.lat_child >= 0 or s.born > week - 52:
+				continue
+			if best < 0 or s.radius > segs[best].radius:
+				best = c
+		if best >= 0:
+			var p := segs[best]
+			p.phase = rng.randf() * TAU
+			_set_lateral(p, (p.end - p.start).normalized())
+			p.lat_dir = (p.lat_dir + Vector3.UP * 1.5).normalized()  # gourmand : pousse vers le haut
+			p.lat_q = 1.5
+			p.release = release_boost
+	return true
 
 
 ## Une branche trop à l'ombre pour sa taille s'affaiblit ; au deuxième été de suite, elle sèche
@@ -168,6 +222,7 @@ func _dieback() -> void:
 					segs[k].dry = true
 					segs[k].term_bud = false
 					segs[k].lat_bud = false
+					segs[k].dry_week = week
 		else:
 			s.weak = 0
 	_basipetal()
@@ -203,13 +258,15 @@ func _basipetal() -> void:
 
 ## De la base vers les feuilles : répartition de la vigueur (Borchert-Honda).
 func _allocate(strength: float) -> void:
-	var pot := clampf(1.0 - float(segs[0].count) / capacity, 0.0, 1.0)
-	segs[0].vigor = alpha * segs[0].light * strength * pot
+	reserve = maxf(reserve, segs[0].light)
+	# Le pot plafonne ce que les racines fournissent : un gros arbre répartit la même vigueur
+	# sur plus de bourgeons, d'où des pousses plus courtes.
+	segs[0].vigor = alpha * pot_q * reserve / (reserve + pot_q) * strength
 	for s in segs:
 		var qm := segs[s.main_child].light if s.main_child >= 0 else s.q_term
 		var ql := segs[s.lat_child].light if s.lat_child >= 0 else s.q_lat
-		var wm := apical * qm
-		var wl := (1.0 - apical) * ql
+		var wm := apical * qm * (s.release if s.main_child < 0 else 1.0)
+		var wl := (1.0 - apical) * ql * s.lat_q * (s.release if s.lat_child < 0 else 1.0)
 		var tot := wm + wl
 		var vm := s.vigor * wm / tot if tot > 0.0 else 0.0
 		var vl := s.vigor * wl / tot if tot > 0.0 else 0.0
@@ -227,22 +284,23 @@ func _grow() -> void:
 	var n0 := segs.size()
 	for i in n0:
 		var s := segs[i]
-		# Arrondi au hasard : la vigueur fractionnaire n'est pas perdue en moyenne.
-		s.v_term = floorf(s.v_term + rng.randf())
-		s.v_lat = floorf(s.v_lat + rng.randf())
-		if s.term_bud and s.v_term >= 1.0:
+		if s.term_bud and (s.v_term >= 1.0 or (s.v_term >= spur_min and s.q_term >= spur_light)):
 			s.term_bud = false
 			s.main_child = _shoot(i, s.end - s.start, s.v_term)
-		if s.lat_bud and s.v_lat >= 1.0:
+		if s.lat_bud and (s.v_lat >= 1.0 or (s.v_lat >= spur_min and s.q_lat >= spur_light)):
 			s.lat_bud = false
 			s.lat_child = _shoot(i, s.lat_dir, s.v_lat)
 		s.v_term = 0.0
 		s.v_lat = 0.0
 
 
-## Fait pousser une tige de floor(v) entre-nœuds depuis le bout du segment parent. Renvoie le premier.
+## Fait pousser une tige depuis le bout du segment parent. Renvoie le premier entre-nœud.
+## Vigueur < 1 : rameau court (un entre-nœud minuscule). Sinon environ v entre-nœuds (arrondi au hasard),
+## d'autant plus longs que la pousse est vigoureuse, plus courts au début et à la fin du rameau.
 func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
-	var n := mini(int(v), max_per_flush)
+	var spur := v < 1.0
+	var n := 1 if spur else clampi(int(v + rng.randf()), 1, max_per_flush)
+	var len_v := 0.3 if spur else clampf(0.5 + 0.15 * v, 0.5, 1.5)
 	var first := -1
 	var prev := parent_i
 	var d := dir.normalized()
@@ -254,13 +312,15 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 		var s := Seg.new()
 		s.parent = prev
 		s.start = p
-		s.end = p + d * internode
+		var profile := 1.0 if spur else 0.6 + 0.6 * sin(PI * (k + 0.5) / n)
+		s.end = p + d * internode * len_v * profile * rng.randf_range(0.8, 1.2)
 		s.radius = tip_radius
 		s.grow_time = GROW_WEEKS / n
 		s.born = week + k * s.grow_time  # les entre-nœuds s'allongent l'un après l'autre
 		phase += phyllotaxy + rng.randf_range(-0.2, 0.2)
 		s.phase = phase
 		_set_lateral(s, d)
+		s.lat_q = rng.randf_range(0.6, 1.4) * (0.7 + 0.6 * float(k + 1) / n)  # acrotonie : le haut du rameau part plus fort
 		segs.append(s)
 		var idx := segs.size() - 1
 		if k == 0:
@@ -310,6 +370,7 @@ func _compact() -> void:
 		s.main_child = remap[s.main_child] if s.main_child >= 0 else -1
 		s.lat_child = remap[s.lat_child] if s.lat_child >= 0 else -1
 	segs = out
+	layout += 1
 
 
 # --- Grille d'ombre ---
