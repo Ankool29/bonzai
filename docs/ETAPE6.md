@@ -30,3 +30,6 @@
 - Anneaux espacés d'au moins 2,5 rayons puis lissage de Chaikin (la spline de Catmull-Rom dépassait et faisait des boucles).
 - Départ de branche enfoncé dans le parent et jamais plus épais que lui ; bouts de tube fermés (plus de « manchons » creux).
 - Pipe model en exposant 3 (branches plus fines) et zigzag de l'orme réduit (jitter 0,06).
+- Épaisseur : le pipe model (épaisseur = nombre de rameaux portés, en marches d'escalier) est remplacé par un cerne
+  annuel proportionnel au feuillage porté (loi de Pressler, ring_area = 1,5e-6) : branches qui s'affinent
+  continûment, tronc conique qui grossit avec les années. Orme de 8 ans : tronc d'environ 3 cm à la base.
