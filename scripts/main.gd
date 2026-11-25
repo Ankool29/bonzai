@@ -31,6 +31,13 @@ var touches := {}
 var tap_start := Vector2.ZERO
 var tap_moved := false
 var pinch := 0.0
+var mid := Vector2.ZERO      # milieu des deux doigts (déplacement de la vue)
+var last_tap_ms := 0
+var last_tap_pos := Vector2.ZERO
+var goal_target := Vector3.ZERO  # vers où la caméra glisse après un double-tap
+var goal_dist := 0.0
+var gliding := false
+const MIN_DIST := 0.03       # zoom au plus près : ~3 cm
 var ui_scale := 1.0
 
 var panel: PanelContainer
@@ -71,6 +78,7 @@ func _ready() -> void:
 	_build_ui()
 	_set_species(Species.ELM)
 	_refresh()
+	_recenter()
 
 
 ## Pot rectangulaire en terre cuite, terre d'akadama en granulés.
@@ -130,6 +138,7 @@ func _build_ui() -> void:
 	box.add_child(row3)
 	_button(row3, "Nouvel orme", func(): _new_tree(Species.ELM))
 	_button(row3, "Nouveau pin", func(): _new_tree(Species.PINE))
+	_button(row3, "Recentrer", _recenter)
 	# Chargement : une feuille qui tourne au milieu de l'écran pendant le calcul de la période.
 	loader = Polygon2D.new()
 	var pts := PackedVector2Array()
@@ -179,6 +188,12 @@ func _advance(weeks: int) -> void:
 
 
 func _process(delta: float) -> void:
+	if gliding:  # glissement doux vers le point choisi par double-tap
+		var k := 1.0 - exp(-delta * 8.0)
+		target = target.lerp(goal_target, k)
+		dist = lerpf(dist, goal_dist, k)
+		gliding = target.distance_to(goal_target) > 0.0005 or absf(dist - goal_dist) > 0.0005
+		_update_cam()
 	if task >= 0:
 		loader.rotation += delta * 4.0
 		if not WorkerThreadPool.is_task_completed(task):
@@ -208,8 +223,6 @@ func _stop_anim() -> void:
 	_set_time(anim_t1)
 	_info(anim_t1)
 	_set_buttons(true)
-	target.y = maxf(0.05, sim.height() * 0.45)
-	_update_cam()
 
 
 func _set_buttons(on: bool) -> void:
@@ -249,8 +262,8 @@ func _new_tree(species: Dictionary) -> void:
 	_set_species(species)
 	selected = -1
 	layout = sim.layout
-	dist = 0.35
 	_refresh()
+	_recenter()
 
 
 ## Arbre immobile à la date actuelle (après une coupe, une sélection, un changement d'affichage).
@@ -262,8 +275,14 @@ func _refresh() -> void:
 	_set_time(sim.week)
 	cut_btn.disabled = selected <= 0
 	_info(sim.week)
-	target.y = maxf(0.05, sim.height() * 0.45)
 	_update_cam()
+
+
+## Vue d'ensemble de l'arbre.
+func _recenter() -> void:
+	goal_target = Vector3(0, maxf(0.05, sim.height() * 0.45), 0)
+	goal_dist = maxf(0.35, sim.height() * 1.6)
+	gliding = true
 
 
 func _info(time: float) -> void:
@@ -298,27 +317,48 @@ func _unhandled_input(ev: InputEvent) -> void:
 			else:
 				tap_moved = true
 				pinch = _pinch_len()
+				var p: Array = touches.values()
+				mid = (p[0] + p[1]) * 0.5
 		elif touches.has(ev.index):
 			touches.erase(ev.index)
 			if touches.is_empty() and not tap_moved:
-				_select_at(ev.position)
+				var now := Time.get_ticks_msec()
+				if now - last_tap_ms < 350 and ev.position.distance_to(last_tap_pos) < 40.0 * ui_scale:
+					_focus_at(ev.position)  # double-tap : on va voir ce point de près
+					last_tap_ms = 0
+				else:
+					_select_at(ev.position)
+					last_tap_ms = now
+					last_tap_pos = ev.position
+			elif touches.size() == 1:
+				pinch = 0.0
 	elif ev is InputEventScreenDrag and touches.has(ev.index):
 		touches[ev.index] = ev.position
 		if ev.position.distance_to(tap_start) > 12.0 * ui_scale:
 			tap_moved = true
 		if touches.size() == 1 and tap_moved:
 			yaw -= ev.relative.x * 0.008
-			pitch = clampf(pitch + ev.relative.y * 0.006, -0.2, 1.4)
+			pitch = clampf(pitch + ev.relative.y * 0.006, -1.5, 1.5)  # dessus comme dessous
+			gliding = false
 			_update_cam()
 		elif touches.size() == 2:
 			var d := _pinch_len()
+			var p: Array = touches.values()
+			var m: Vector2 = (p[0] + p[1]) * 0.5
 			if pinch > 0.0 and d > 0.0:
-				dist = clampf(dist * pinch / d, 0.06, 2.0)
+				dist = clampf(dist * pinch / d, MIN_DIST, 2.0)
+				# glisser à deux doigts : le point visé suit les doigts, dans le plan de l'écran
+				var px := dist * 2.0 * tan(deg_to_rad(cam.fov * 0.5)) / get_viewport().get_visible_rect().size.y
+				var dm := m - mid
+				var bas := cam.global_transform.basis
+				target += (-bas.x * dm.x + bas.y * dm.y) * px
 			pinch = d
+			mid = m
+			gliding = false
 			_update_cam()
 	elif ev is InputEventMouseButton and ev.pressed:  # molette sur PC
 		if ev.button_index == MOUSE_BUTTON_WHEEL_UP:
-			dist = maxf(dist * 0.9, 0.06)
+			dist = maxf(dist * 0.9, MIN_DIST)
 			_update_cam()
 		elif ev.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			dist = minf(dist * 1.1, 2.0)
@@ -330,6 +370,21 @@ func _pinch_len() -> float:
 	return p[0].distance_to(p[1]) if p.size() >= 2 else 0.0
 
 
+## Double-tap : la caméra glisse vers le point de branche sous le doigt et s'en rapproche.
+func _focus_at(pos: Vector2) -> void:
+	var i := _pick(pos)
+	if i < 0:
+		return
+	var s := sim.segs[i]
+	var a := cam.unproject_position(s.start)
+	var b := cam.unproject_position(s.end)
+	var p := Geometry2D.get_closest_point_to_segment(pos, a, b)
+	var u := clampf((p - a).dot(b - a) / maxf((b - a).length_squared(), 0.0001), 0.0, 1.0)
+	goal_target = s.start.lerp(s.end, u)
+	goal_dist = clampf(dist * 0.4, MIN_DIST * 2.0, 0.15)
+	gliding = true
+
+
 ## Sélectionne le segment le plus proche du doigt à l'écran.
 func _select_at(pos: Vector2) -> void:
 	if playing:  # toucher l'écran pendant l'animation : on saute à la fin
@@ -337,6 +392,12 @@ func _select_at(pos: Vector2) -> void:
 		return
 	if task >= 0:
 		return
+	selected = _pick(pos)
+	_refresh()
+
+
+## Segment le plus proche du doigt à l'écran (-1 si aucun assez près).
+func _pick(pos: Vector2) -> int:
 	var best := -1
 	var best_d := 40.0 * ui_scale
 	for i in sim.segs.size():
@@ -351,5 +412,4 @@ func _select_at(pos: Vector2) -> void:
 		if d < best_d:
 			best_d = d
 			best = i
-	selected = best
-	_refresh()
+	return best

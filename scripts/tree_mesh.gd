@@ -208,10 +208,10 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 		a = (a - d * a.dot(d)).normalized()  # transport parallèle : le tube ne se vrille pas
 		v += (pts[m] - pts[m - 1]).length()
 		an = _ring_anim(pidx[m], chain, off, seg_f)
-		var cur := _ring(pts[m], d, a, maxf(rad[m], 0.0008), v, col[m], axis_seed, an[0], an[1])
+		var cur := _ring(pts[m], d, a, maxf(rad[m], 0.0004), v, col[m], axis_seed, an[0], an[1])
 		_join(prev, cur)
 		prev = cur
-	_cap(prev, pts[-1] + d * maxf(rad[rad.size() - 1], 0.0008) * 0.6, true)
+	_cap(prev, pts[-1] + d * maxf(rad[rad.size() - 1], 0.0004) * 0.6, true)
 
 
 ## Ferme un bout de tube (pointe, coupe) par un petit cône : plus de tube creux visible.
@@ -271,9 +271,13 @@ func _ring(c: Vector3, d: Vector3, a: Vector3, r: float, v: float, col: Color, a
 	for k in SIDES + 1:
 		var ang := TAU * k / SIDES
 		var nrm := a * cos(ang) + b * sin(ang)
-		# Anneaux légèrement irréguliers (bosses, méplats) qui varient doucement le long du bois ;
+		# Anneaux irréguliers (bosses, méplats, renflements) qui varient doucement le long du bois ;
 		# plus marqués sur le bois épais, nuls sur les rameaux fins.
-		var bump := 1.0 + minf(0.12, r * 8.0) * (0.6 * sin(2.0 * ang + axis_seed * 7.3 + v * 35.0) + 0.4 * sin(3.0 * ang + axis_seed * 3.1 - v * 55.0))
+		var amp := minf(0.22, r * 14.0)
+		var bump := 1.0 + amp * (0.45 * sin(2.0 * ang + axis_seed * 7.3 + v * 35.0)
+				+ 0.3 * sin(3.0 * ang + axis_seed * 3.1 - v * 55.0)
+				+ 0.15 * sin(5.0 * ang + axis_seed * 1.7 + v * 90.0)
+				+ 0.25 * sin(v * 22.0 + axis_seed * 5.0))  # renflements le long du bois
 		verts.append(c + nrm * r * bump)
 		norms.append(nrm)
 		uvs.append(Vector2(float(k) / SIDES, v))
