@@ -1,9 +1,16 @@
-extends Node3D
-## Étape 1 : un orme qui pousse et qu'on taille. Vue 3D simple, rotation au doigt, pincer pour zoomer.
+extends Node
+## Un bonsaï qui pousse et qu'on taille. Rendu pixel art 3D façon estampe : la scène est rendue en basse
+## résolution (SubViewport) puis agrandie sans lissage. Rotation au doigt, pincer pour zoomer.
+
+const TOON := preload("res://shaders/toon.gdshader")
+const INK := preload("res://shaders/ink.gdshader")
+const TARGET_WIDTH := 480.0   # largeur du rendu en pixels
 
 var sim := TreeSim.new()
 var tree_mi := MeshInstance3D.new()
 var cam := Camera3D.new()
+var world := Node3D.new()
+var shrink := 3
 var yaw := 0.6
 var pitch := 0.25
 var dist := 0.35
@@ -27,45 +34,72 @@ var cut_btn: Button
 
 
 func _ready() -> void:
-	ui_scale = get_viewport().get_visible_rect().size.x / 720.0
+	var screen := get_viewport().get_visible_rect().size
+	ui_scale = screen.x / 720.0
+	shrink = maxi(1, roundi(screen.x / TARGET_WIDTH))
+	var box := SubViewportContainer.new()
+	box.stretch = true
+	box.stretch_shrink = shrink
+	box.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(box)
+	var vp := SubViewport.new()
+	box.add_child(vp)
+	vp.add_child(world)
 	sim.reset()
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 1.0
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	tree_mi.material_override = mat
-	add_child(tree_mi)
+	tree_mi.material_override = _toon(Color.WHITE)
+	world.add_child(tree_mi)
 	cam.near = 0.005
+	cam.far = 20.0
 	cam.fov = 45.0
-	add_child(cam)
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-50, 30, 0)
-	add_child(sun)
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.86, 0.88, 0.83)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.7, 0.7, 0.7)
-	var we := WorldEnvironment.new()
-	we.environment = env
-	add_child(we)
+	world.add_child(cam)
+	var ink := MeshInstance3D.new()  # contours et papier, passe plein écran
+	var quad := QuadMesh.new()
+	quad.size = Vector2(2, 2)
+	ink.mesh = quad
+	ink.extra_cull_margin = 16384.0
+	var im := ShaderMaterial.new()
+	im.shader = INK
+	ink.material_override = im
+	cam.add_child(ink)
 	_add_pot()
 	_build_ui()
 	_refresh()
 
 
-func _add_pot() -> void:
-	var pot := MeshInstance3D.new()
+func _toon(c: Color) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = TOON
+	m.set_shader_parameter("tint", c)
+	return m
+
+
+func _add_cyl(r_top: float, r_bot: float, h: float, pos: Vector3, c: Color) -> void:
+	var mi := MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.12
-	cyl.bottom_radius = 0.1
-	cyl.height = 0.06
-	pot.mesh = cyl
-	pot.position.y = -0.031
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.35, 0.3, 0.32)
-	pot.material_override = m
-	add_child(pot)
+	cyl.top_radius = r_top
+	cyl.bottom_radius = r_bot
+	cyl.height = h
+	cyl.radial_segments = 24
+	cyl.rings = 1
+	mi.mesh = cyl
+	mi.position = pos
+	mi.material_override = _toon(c)
+	world.add_child(mi)
+
+
+## Pot émaillé dans un ton sourd, terre et quelques touches de mousse.
+func _add_pot() -> void:
+	_add_cyl(0.12, 0.1, 0.06, Vector3(0, -0.035, 0), Color(0.38, 0.42, 0.5))
+	_add_cyl(0.114, 0.114, 0.004, Vector3(0, -0.004, 0), Color(0.4, 0.32, 0.25))
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	for k in 14:
+		var ang := rng.randf() * TAU
+		var d := rng.randf_range(0.03, 0.1)
+		var r := rng.randf_range(0.008, 0.02)
+		_add_cyl(r, r, 0.004, Vector3(cos(ang) * d, -0.002, sin(ang) * d), Color(0.46, 0.55, 0.3))
 
 
 func _build_ui() -> void:
@@ -230,8 +264,9 @@ func _pinch_len() -> float:
 
 ## Sélectionne le segment le plus proche du doigt à l'écran.
 func _select_at(pos: Vector2) -> void:
+	pos /= shrink  # coordonnées du rendu basse résolution
 	var best := -1
-	var best_d := 40.0 * ui_scale
+	var best_d := 40.0 * ui_scale / shrink
 	for i in sim.segs.size():
 		var s := sim.segs[i]
 		if sim.growth(s, sim.week + frac) <= 0.0:
