@@ -17,8 +17,11 @@ class Seg:
 	var lat_bud_age := 0
 	var phase := 0.0         # angle de phyllotaxie
 	var radius := 0.0
-	var born := 0
-	var dead := false
+	var born := 0.0          # semaine où l'entre-nœud commence à s'allonger
+	var grow_time := 1.0     # semaines pour atteindre sa longueur
+	var dead := false        # à retirer du tableau
+	var dry := false         # bois mort resté sur l'arbre
+	var weak := 0            # étés passés trop à l'ombre
 	# recalculés à chaque poussée
 	var light := 0.0
 	var count := 0
@@ -30,7 +33,7 @@ class Seg:
 
 # --- Paramètres de l'espèce : orme de Chine (seront sortis dans une fiche espèce plus tard) ---
 var internode := 0.018
-var alpha := 2.0              # vigueur totale = alpha × lumière captée
+var alpha := 1.6              # vigueur totale = alpha × lumière captée
 var apical := 0.53            # part de vigueur donnée à l'axe principal (λ)
 var max_per_flush := 4        # entre-nœuds max par bourgeon et par poussée
 var branch_angle := deg_to_rad(45.0)
@@ -41,22 +44,25 @@ var w_up := 0.12
 var jitter := 0.12
 var tip_radius := 0.0012
 var pipe_exp := 2.5
-var shed_ratio := 0.06        # lumière par entre-nœud sous laquelle une branche meurt
+var shed_ratio := 0.04        # lumière par entre-nœud sous laquelle une branche dépérit
 var bud_life := 52 * 8        # durée de vie d'un bourgeon dormant (semaines)
 var backbud_nodes := 4        # nœuds sous la coupe qui peuvent rebourgeonner
 var backbud_chance := 0.6
-var capacity := 4000          # entre-nœuds que le pot peut nourrir (en attendant les racines)
+var capacity := 1500          # entre-nœuds vivants que le pot peut nourrir (en attendant les racines)
 
 ## Semaine de l'année -> force de la poussée (printemps puis petite poussée d'été).
 const FLUSHES := {15: 1.0, 18: 1.0, 21: 0.8, 27: 0.5}
+const GROW_WEEKS := 3.0       # durée d'allongement d'une pousse (écart entre deux poussées)
+const DIEBACK_WEEK := 35      # fin d'été : bilan de lumière des branches
 
 # --- Grille d'ombre (Palubicki 2009, propagation en pyramide vers le bas) ---
+# Bonsaï seul sur sa table : seul l'arbre se fait de l'ombre, les côtés sont ouverts.
 const CELL := 0.025
-const GX := 24
-const GY := 32
-const GZ := 24
-const SH_A := 0.2
-const SH_B := 1.8
+const GX := 40
+const GY := 48
+const GZ := 40
+const SH_A := 0.15
+const SH_B := 2.2
 const SH_Q := 4
 var shadow := PackedFloat32Array()
 
@@ -82,8 +88,10 @@ func step_week() -> void:
 	var w := week % 52
 	if FLUSHES.has(w):
 		_flush(FLUSHES[w])
+	if w == DIEBACK_WEEK:
+		_dieback()
 	if w == 0:
-		_end_of_year()
+		_age_buds()
 
 
 ## Coupe le segment i et tout ce qu'il porte. Renvoie false pour la base (on ne coupe pas tout l'arbre).
@@ -97,7 +105,7 @@ func prune(i: int) -> bool:
 		if j < 0:
 			break
 		var p := segs[j]
-		if not p.lat_bud and p.lat_child < 0 and rng.randf() < backbud_chance:
+		if not p.dry and not p.lat_bud and p.lat_child < 0 and rng.randf() < backbud_chance:
 			p.phase = rng.randf() * TAU
 			_set_lateral(p, (p.end - p.start).normalized())
 		j = p.parent
@@ -136,21 +144,38 @@ func _flush(strength: float) -> void:
 	_basipetal()
 
 
-func _end_of_year() -> void:
-	_compute_shadow()
-	_basipetal()
+func _age_buds() -> void:
 	for s in segs:
 		if s.lat_bud:
 			s.lat_bud_age += 52
 			if s.lat_bud_age > bud_life:
 				s.lat_bud = false
-	# Élagage naturel : une branche qui capte trop peu de lumière pour sa taille meurt.
+
+
+## Une branche trop à l'ombre pour sa taille s'affaiblit ; au deuxième été de suite, elle sèche
+## et reste sur l'arbre en bois mort (au joueur de la couper). Éclaircir au-dessus la sauve.
+func _dieback() -> void:
+	_compute_shadow()
+	_basipetal()
 	for i in range(1, segs.size()):
 		var s := segs[i]
-		if not s.dead and s.light < shed_ratio * s.count:
-			_kill(i)
-	_compact()
+		if s.dry:
+			continue
+		if s.light < shed_ratio * s.count:
+			s.weak += 1
+			if s.weak >= 2:
+				for k in subtree(i):
+					segs[k].dry = true
+					segs[k].term_bud = false
+					segs[k].lat_bud = false
+		else:
+			s.weak = 0
 	_basipetal()
+
+
+## Avancement de l'allongement d'un segment à l'instant t (en semaines) : 0 = pas commencé, 1 = fini.
+func growth(s: Seg, t: float) -> float:
+	return clampf((t - s.born) / s.grow_time, 0.0, 1.0)
 
 
 func _lat_pos(s: Seg) -> Vector3:
@@ -165,7 +190,7 @@ func _basipetal() -> void:
 		s.q_term = _light(s.end) if s.term_bud and has_shadow else 0.0
 		s.q_lat = _light(_lat_pos(s)) if s.lat_bud and has_shadow else 0.0
 		s.light = s.q_term + s.q_lat
-		s.count = 1
+		s.count = 0 if s.dry else 1
 		var r := pow(tip_radius, pipe_exp) if (s.term_bud or s.lat_bud) else 0.0
 		for c in [s.main_child, s.lat_child]:
 			if c >= 0:
@@ -178,7 +203,7 @@ func _basipetal() -> void:
 
 ## De la base vers les feuilles : répartition de la vigueur (Borchert-Honda).
 func _allocate(strength: float) -> void:
-	var pot := clampf(1.0 - float(segs.size()) / capacity, 0.0, 1.0)
+	var pot := clampf(1.0 - float(segs[0].count) / capacity, 0.0, 1.0)
 	segs[0].vigor = alpha * segs[0].light * strength * pot
 	for s in segs:
 		var qm := segs[s.main_child].light if s.main_child >= 0 else s.q_term
@@ -231,7 +256,8 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 		s.start = p
 		s.end = p + d * internode
 		s.radius = tip_radius
-		s.born = week
+		s.grow_time = GROW_WEEKS / n
+		s.born = week + k * s.grow_time  # les entre-nœuds s'allongent l'un après l'autre
 		phase += phyllotaxy + rng.randf_range(-0.2, 0.2)
 		s.phase = phase
 		_set_lateral(s, d)
@@ -293,8 +319,10 @@ func _cell(p: Vector3) -> Vector3i:
 
 
 func _shadow_at(c: Vector3i) -> float:
-	if c.x < 0 or c.y < 0 or c.z < 0 or c.x >= GX or c.y >= GY or c.z >= GZ:
-		return 1.0  # hors de la grille : comme de l'ombre, l'arbre reste à taille de bonsaï
+	if c.y < 0:
+		return 1.0  # sous la terre : pas de lumière
+	if c.x < 0 or c.z < 0 or c.x >= GX or c.y >= GY or c.z >= GZ:
+		return 0.0  # hors de la grille : plein ciel
 	return shadow[(c.y * GZ + c.z) * GX + c.x]
 
 

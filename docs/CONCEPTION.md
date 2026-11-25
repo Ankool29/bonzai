@@ -19,6 +19,11 @@ de l'arbre : pousse selon l'espèce, réaction à la taille et au ligaturage.
   rebourgeonnage sur vieux bois, bois mort jin/shari).
 - Espèces de départ : orme de Chine (facile), érable du Japon (moyen), pin noir du Japon (expert).
 
+## Bonsaï, pas arbre sauvage
+- Seul sur sa table : seul l'arbre se fait de l'ombre. La taille est limitée par le pot, pas par la lumière.
+- Une branche trop à l'ombre dépérit progressivement (jaunit, puis bois mort au 2e été) ; éclaircir la sauve.
+- La pousse se voit : le temps défile à l'écran, les pousses s'allongent.
+
 ## Environnement (simulé simplement)
 - Lumière : simulée finement, pilote la pousse. Emplacement et rotation du pot.
 - Eau : jauge d'humidité selon saison, pot, substrat. Trop sec ou trop humide = dégâts.
