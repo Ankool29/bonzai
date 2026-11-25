@@ -1,5 +1,5 @@
 extends Node
-## Un bonsaï qui pousse et qu'on taille. Rendu pixel art : écorce procédurale, feuilles PixelLab,
+## Un bonsaï qui pousse et qu'on taille. Rendu pixel art : écorce procédurale, feuilles PixelLab ancrées aux nœuds,
 ## aiguilles en géométrie, scène rendue en basse résolution (SubViewport) puis agrandie sans lissage.
 ## Rotation au doigt, pincer pour zoomer.
 
@@ -8,7 +8,7 @@ const REBUILD_MS := 250        # pendant que le temps défile, l'arbre est recon
 
 var sim := TreeSim.new()
 var wood_mi := MeshInstance3D.new()
-var leaves_mi := MultiMeshInstance3D.new()
+var leaves_mi := MeshInstance3D.new()
 var needles_mi := MeshInstance3D.new()
 var cam := Camera3D.new()
 var world := Node3D.new()
@@ -107,7 +107,7 @@ func _set_species(species: Dictionary) -> void:
 	sim.reset(randi(), species)
 	wood_mi.material_override = TreeMesh.bark_material(sim)
 	if sim.foliage_tex != "":
-		leaves_mi.material_override = TreeMesh.foliage_material(load(sim.foliage_tex))
+		leaves_mi.material_override = TreeMesh.leaf_material(load(sim.foliage_tex))
 
 
 func _build_ui() -> void:
@@ -208,7 +208,7 @@ func _refresh() -> void:
 	var hl := sim.subtree(selected) if selected > 0 else PackedInt32Array()
 	var built := TreeMesh.build(sim, hl, sim.week + frac, show_leaves)
 	wood_mi.mesh = built[0]
-	leaves_mi.multimesh = built[1]
+	leaves_mi.mesh = built[1]
 	needles_mi.mesh = built[2]
 	last_build = Time.get_ticks_msec()
 	cut_btn.disabled = selected <= 0

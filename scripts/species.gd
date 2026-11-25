@@ -3,12 +3,15 @@ class_name Species
 
 const ELM := {
 	"name": "Orme de Chine",
-	# écorce grise et lisse, taches orangées (desquamation), fines fissures
+	# Doc (UF/IFAS ST-652, UConn, Flora of North America) : feuilles alternes, simples, dentées, base oblique,
+	# limbe 2-6 cm (réduit à ~2 cm en bonsaï), pétiole 2-6 mm ; rameaux de l'année gris-brun, fins ;
+	# écorce desquamée en plaques marbrées gris, olive, beige, orangé ; automne jaune à rouge-violet.
+	# rameaux fins gris-brun ; écorce : voir le mode « lacebark » du shader
 	"bark_colors": [Color(0.55, 0.52, 0.47), Color(0.63, 0.6, 0.55), Color(0.62, 0.45, 0.32), Color(0.33, 0.28, 0.24)],
 	"bark_fleck": 0.15,
 	"bark_fissure": 0.18,
 	"foliage_tex": "res://textures/leaf_elm.png",  # 3 feuilles simples (PixelLab)
-	"foliage_size": 0.016,
+	"foliage_size": 0.02,
 	"internode": 0.018,
 	"alpha": 1.6,
 	"apical": 0.53,

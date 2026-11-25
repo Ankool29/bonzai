@@ -2,15 +2,15 @@ class_name TreeMesh
 extends RefCounted
 ## Rendu pixel art texturé de l'arbre à l'instant t (semaines) :
 ## - chaque axe (tronc, branche, rameau) est un tube continu, tracé et épaisseur lissés, écorce procédurale ;
-## - orme : une feuille par nœud, petites images tournées vers la caméra (MultiMesh, 3 variantes) ;
+## - orme : une feuille par nœud, image PixelLab sur un plan ancré au nœud (3 variantes) ;
 ## - pin : aiguilles par paires dessinées en géométrie (deux triangles fins croisés).
 ## La scène est ensuite rendue en basse résolution par main.gd, d'où l'aspect pixel art.
 
 const SIDES := 12
 const FRAMES := 3                          # variantes de feuilles dans l'atlas
-const YOUNG := Color(0.55, 0.72, 0.3, 0.45)  # pousse de l'année : écorce verdie
+const YOUNG := Color(0.55, 0.47, 0.38, 0.35)  # rameau de l'année : gris-brun lisse
 const SELECTED := Color(0.95, 0.2, 0.12, 0.7)
-const WEAK := Color(0.85, 0.7, 0.25, 0.45)   # branche qui s'affaiblit à l'ombre
+const WEAK := Color(0.8, 0.7, 0.35, 0.3)     # branche qui s'affaiblit à l'ombre
 const DRY := Color(0.85, 0.82, 0.75, 0.7)    # bois mort
 const OLD := Color(1, 1, 1, 0)               # écorce seule
 const AUTUMN := Color(1.0, 0.72, 0.3)
@@ -25,10 +25,13 @@ var nverts := PackedVector3Array()  # aiguilles
 var ncols := PackedColorArray()
 var cols := PackedColorArray()
 var idx := PackedInt32Array()
-var cards: Array = []  # [position, taille, variante, teinte]
+var lverts := PackedVector3Array()  # feuilles
+var lnorms := PackedVector3Array()
+var luvs := PackedVector2Array()
+var lcols := PackedColorArray()
 
 
-## Renvoie [ArrayMesh du bois, MultiMesh des feuilles, ArrayMesh des aiguilles].
+## Renvoie [ArrayMesh du bois, ArrayMesh des feuilles, ArrayMesh des aiguilles].
 static func build(s: TreeSim, highlight: PackedInt32Array, time: float, leaves: bool) -> Array:
 	var m := TreeMesh.new()
 	m.sim = s
@@ -43,14 +46,18 @@ static func bark_material(s: TreeSim) -> ShaderMaterial:
 		mat.set_shader_parameter(["tone1", "tone2", "fleck", "fissure"][k], s.bark_colors[k])
 	mat.set_shader_parameter("fleck_amount", s.bark_fleck)
 	mat.set_shader_parameter("fissure_amount", s.bark_fissure)
+	mat.set_shader_parameter("lacebark", s.leaf_years == 0)
 	return mat
 
 
-static func foliage_material(tex: Texture2D) -> ShaderMaterial:
-	var mat := ShaderMaterial.new()
-	mat.shader = preload("res://shaders/foliage.gdshader")
-	mat.set_shader_parameter("atlas", tex)
-	mat.set_shader_parameter("frames", float(FRAMES))
+static func leaf_material(tex: Texture2D) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.albedo_texture = tex
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR
+	mat.vertex_color_use_as_albedo = true
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.roughness = 1.0
 	return mat
 
 
@@ -95,7 +102,7 @@ func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 			_foliage(s, seg_f[i], weak[i] == 1, marked.has(i))
 	if n > 0:
 		_nebari()
-	return [_wood_mesh(), _cards_multimesh(), _needle_mesh()]
+	return [_wood_mesh(), _leaf_mesh(), _needle_mesh()]
 
 
 ## Un axe : la suite des prolongements depuis i0, en un seul tube à l'épaisseur lissée.
@@ -119,28 +126,42 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 		r = sm
 	if i0 == 0:  # pied du tronc : évasement
 		r[0] *= 1.8
-	# tracé lissé : les zigzags des entre-nœuds s'adoucissent (extrémités inchangées)
-	var pts: Array[Vector3] = [sim.segs[i0].start]
+	var raw: Array[Vector3] = [sim.segs[i0].start]
 	for m in chain.size():
 		var s := sim.segs[chain[m]]
-		pts.append(s.start + (s.end - s.start) * seg_f[chain[m]])
-	for pass_i in 2:
-		var sp := pts.duplicate()
-		for m in range(1, pts.size() - 1):
-			sp[m] = (pts[m - 1] + 2.0 * pts[m] + pts[m + 1]) * 0.25
-		pts = sp
+		raw.append(s.start + (s.end - s.start) * seg_f[chain[m]])
+	# Décimation : anneaux espacés d'au moins 1,2 rayon, sinon un tube épais se replie dans les virages
+	# (c'était le tronc « en morceaux »).
+	var keep: Array[int] = [0]
+	for m in range(1, raw.size()):
+		if m == raw.size() - 1 or raw[m].distance_to(raw[keep[-1]]) >= 1.2 * r[keep[-1]]:
+			keep.append(m)
+	# Courbe de Catmull-Rom par les points gardés : 3 anneaux par intervalle, tracé souple.
+	var pts: Array[Vector3] = [raw[0]]
+	var rad := PackedFloat32Array([r[0]])
+	var col := PackedColorArray([seg_col[i0]])
+	for m in keep.size() - 1:
+		var p0 := raw[keep[maxi(m - 1, 0)]]
+		var p1 := raw[keep[m]]
+		var p2 := raw[keep[m + 1]]
+		var p3 := raw[keep[mini(m + 2, keep.size() - 1)]]
+		var c := seg_col[chain[mini(keep[m + 1], chain.size() - 1)]]
+		for q in range(1, 4):
+			var u := q / 3.0
+			pts.append(0.5 * (2.0 * p1 + (p2 - p0) * u + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * u * u + (3.0 * p1 - p0 - 3.0 * p2 + p3) * u * u * u))
+			rad.append(lerpf(r[keep[m]], r[keep[m + 1]], u))
+			col.append(c)
 	var d := (pts[1] - pts[0]).normalized()
 	var a := _perp(d)
 	var v := 0.0
-	var prev := _ring(pts[0], d, a, r[0], v, seg_col[i0])
+	var prev := _ring(pts[0], d, a, rad[0], v, col[0])
 	for m in range(1, pts.size()):
 		d = (pts[m] - pts[m - 1]).normalized()
 		if m + 1 < pts.size():
 			d = (d + (pts[m + 1] - pts[m]).normalized()).normalized()
 		a = (a - d * a.dot(d)).normalized()  # transport parallèle : le tube ne se vrille pas
 		v += (pts[m] - pts[m - 1]).length()
-		var c := seg_col[chain[m]] if m < chain.size() else seg_col[chain[m - 1]]
-		var cur := _ring(pts[m], d, a, maxf(r[m], 0.0008), v, c)
+		var cur := _ring(pts[m], d, a, maxf(rad[m], 0.0008), v, col[m])
 		_join(prev, cur)
 		prev = cur
 
@@ -210,12 +231,23 @@ func _foliage(s: TreeSim.Seg, f: float, weak: bool, selected: bool) -> void:
 		if h < 0.4:
 			return
 		col *= Color(1.0, 0.9, 0.55)
-	# ombre : les bouquets à l'intérieur de la couronne sont plus sombres
-	col *= lerpf(0.6, 1.0, clampf(s.light / maxf(s.count, 1) * 1.5, 0.0, 1.0))
 	if selected:
 		col = Color(1.0, 0.35, 0.3)
-	var p := s.end + s.lat_dir * 0.008
-	cards.append([p, sim.foliage_size * f, floori(h * FRAMES) % FRAMES, col, h * TAU])
+	# Feuille d'orme : pétiole au nœud, limbe presque horizontal dans le prolongement du bourgeon
+	# (feuilles alternes sur deux rangs), légère inclinaison au hasard. L'image inclut le pétiole.
+	var dir := Vector3(s.lat_dir.x, s.lat_dir.y * 0.3, s.lat_dir.z).normalized()
+	var side := Vector3.UP.cross(dir).normalized().rotated(dir, (h - 0.5) * 0.8)
+	var l := sim.foliage_size * f
+	var b := s.end
+	var q := [b - side * l * 0.5, b + side * l * 0.5, b + side * l * 0.5 + dir * l, b - side * l * 0.5 + dir * l]
+	var u0 := float(floori(h * FRAMES) % FRAMES) / FRAMES
+	var u1 := u0 + 1.0 / FRAMES
+	var nrm := dir.cross(side).normalized()
+	for k in [[0, u0, 1.0], [1, u1, 1.0], [2, u1, 0.0], [0, u0, 1.0], [2, u1, 0.0], [3, u0, 0.0]]:
+		lverts.append(q[k[0]])
+		lnorms.append(nrm)
+		luvs.append(Vector2(k[1], k[2]))
+		lcols.append(col)
 
 
 ## Aiguilles de pin par paires le long de la pousse : chacune = deux triangles fins croisés,
@@ -261,22 +293,18 @@ func _wood_mesh() -> ArrayMesh:
 	return mesh
 
 
-func _cards_multimesh() -> MultiMesh:
-	var quad := QuadMesh.new()
-	quad.size = Vector2(1, 1)
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	mm.use_custom_data = true
-	mm.mesh = quad
-	mm.instance_count = cards.size()
-	for i in cards.size():
-		var c: Array = cards[i]
-		var sz: float = c[1]
-		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3(sz, sz, sz)), c[0]))
-		mm.set_instance_color(i, c[3])
-		mm.set_instance_custom_data(i, Color(c[2], c[4], 0, 0))
-	return mm
+func _leaf_mesh() -> ArrayMesh:
+	var mesh := ArrayMesh.new()
+	if lverts.is_empty():
+		return mesh
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = lverts
+	arr[Mesh.ARRAY_NORMAL] = lnorms
+	arr[Mesh.ARRAY_TEX_UV] = luvs
+	arr[Mesh.ARRAY_COLOR] = lcols
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return mesh
 
 
 func _needle_mesh() -> ArrayMesh:
