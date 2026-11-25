@@ -8,9 +8,6 @@ const ELM := {
 	# écorce desquamée en plaques marbrées gris, olive, beige, orangé ; automne jaune à rouge-violet.
 	# rameaux fins gris-brun ; écorce : voir le mode « lacebark » du shader
 	"bark_colors": [Color(0.55, 0.52, 0.47), Color(0.63, 0.6, 0.55), Color(0.62, 0.45, 0.32), Color(0.33, 0.28, 0.24)],
-	"bark_fleck": 0.15,
-	"bark_fissure": 0.18,
-	"foliage_tex": "res://textures/leaf_elm.png",  # 3 feuilles simples (PixelLab)
 	"foliage_size": 0.02,
 	"internode": 0.018,
 	"alpha": 1.6,
@@ -37,9 +34,6 @@ const PINE := {
 	"name": "Pin noir du Japon",
 	# plaques gris foncé, fissures profondes brun-rouge
 	"bark_colors": [Color(0.38, 0.33, 0.31), Color(0.45, 0.4, 0.37), Color(0.4, 0.34, 0.3), Color(0.36, 0.18, 0.12)],
-	"bark_fleck": 0.0,
-	"bark_fissure": 0.28,
-	"foliage_tex": "",  # aiguilles dessinées en géométrie
 	"internode": 0.02,
 	"alpha": 1.6,
 	"apical": 0.62,

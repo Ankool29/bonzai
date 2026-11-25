@@ -37,9 +37,6 @@ class Seg:
 # --- Paramètres de l'espèce (valeurs de l'orme ; remplacés par la fiche de scripts/species.gd) ---
 var name := "Orme de Chine"
 var bark_colors := [Color(0.55, 0.52, 0.47), Color(0.63, 0.6, 0.55), Color(0.62, 0.45, 0.32), Color(0.33, 0.28, 0.24)]
-var bark_fleck := 0.15
-var bark_fissure := 0.18
-var foliage_tex := "res://textures/leaf_elm.png"
 var foliage_size := 0.02     # longueur d'une feuille avec son pétiole (m)
 var internode := 0.018
 var alpha := 1.6              # vigueur totale = alpha × lumière captée
