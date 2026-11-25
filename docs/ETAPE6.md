@@ -33,3 +33,11 @@
 - Épaisseur : le pipe model (épaisseur = nombre de rameaux portés, en marches d'escalier) est remplacé par un cerne
   annuel proportionnel au feuillage porté (loi de Pressler, ring_area = 1,5e-6) : branches qui s'affinent
   continûment, tronc conique qui grossit avec les années. Orme de 8 ans : tronc d'environ 3 cm à la base.
+
+## Bois en anneaux (idée du joueur)
+- Règle de continuité : le long d'un axe, un anneau n'est jamais plus épais que le précédent ; les anneaux
+  grossissent avec les cernes annuels.
+- Anneaux légèrement irréguliers (bosses et méplats variant doucement le long du bois, plus marqués sur le vieux bois).
+- Fourches : une grosse branche (plus de la moitié du parent) naît dans le parent, sur son axe, un peu sous le nœud,
+  et s'en écarte doucement (fourche en Y) ; une petite branche part enfoncée dans le parent avec un léger col.
+- Plus tard : garder l'histoire de chaque anneau (marques de fil, bourrelets de cicatrisation).
