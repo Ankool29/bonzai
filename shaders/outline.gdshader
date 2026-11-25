@@ -11,10 +11,12 @@ uniform float width = 0.0008;
 
 void vertex() {
 	float shown = 1.0;
+	float w = width;
 	if (anim == 1) {
+		w = min(width, length(VERTEX - CUSTOM1.xyz) * 0.5);  // contour plus fin sur les jeunes rameaux
 		VERTEX = anim_wood(VERTEX, CUSTOM0, CUSTOM1, CUSTOM2, shown);
 	}
-	VERTEX += NORMAL * width * shown;
+	VERTEX += NORMAL * w * shown;
 }
 
 void fragment() {
