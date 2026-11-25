@@ -6,6 +6,7 @@ extends RefCounted
 ## - pin : aiguilles par paires dessinées en géométrie (deux triangles fins croisés).
 
 const SIDES := 12
+const LEAF_PTS := 14                       # points du bord d'un côté de la feuille
 const YOUNG := Color(0.55, 0.47, 0.38, 0.35)  # rameau de l'année : gris-brun lisse
 const SELECTED := Color(0.95, 0.2, 0.12, 0.7)
 const WEAK := Color(0.8, 0.7, 0.35, 0.3)     # branche qui s'affaiblit à l'ombre
@@ -269,34 +270,66 @@ func _foliage(s: TreeSim.Seg, f: float, weak: bool, selected: bool) -> void:
 		col *= Color(1.0, 0.9, 0.55)
 	if selected:
 		col = Color(1.0, 0.35, 0.3)
-	# Feuille d'orme : pétiole de 3 mm au nœud, limbe ovale pointu presque horizontal dans le
-	# prolongement du bourgeon (feuilles alternes sur deux rangs), légère inclinaison au hasard.
+	# Feuille d'orme : pétiole de 3 mm au nœud qui se prolonge en nervure centrale (liseré sombre),
+	# limbe ovale le plus large sous le milieu, pointe aiguë, base oblique, bord finement denté, contour fin,
+	# 5 paires de nervures. Limbe presque horizontal dans le prolongement du bourgeon (alternes, deux rangs).
 	var dir := Vector3(s.lat_dir.x, s.lat_dir.y * 0.3, s.lat_dir.z).normalized()
 	var side := Vector3.UP.cross(dir).normalized().rotated(dir, (h - 0.5) * 0.8)
 	var nrm := dir.cross(side).normalized()
 	var l := sim.foliage_size * f
-	var w := l * 0.22
+	var wmax := l * 0.27
 	var b0 := s.end + dir * 0.003 * f  # base du limbe, au bout du pétiole
 	if not selected:
 		col *= Color(0.35, 0.62, 0.22) if h < 0.5 else Color(0.28, 0.55, 0.2)
-	_tri(s.end + side * 0.0004, s.end - side * 0.0004, b0, nrm, col)  # pétiole
-	var c := b0 + dir * l * 0.45
-	var prev := b0
-	for k in range(1, 13):
-		var u := PI * k / 12.0  # contour d'un côté puis de l'autre
-		var x := (1.0 - cos(u)) * 0.5
-		var y := sin(u) * (1.0 - x * 0.35) * w
-		var p1 := b0 + dir * l * x + side * y
-		_tri(c, prev, p1, nrm, col)
-		prev = p1
-	prev = b0
-	for k in range(1, 13):
-		var u := PI * k / 12.0
-		var x := (1.0 - cos(u)) * 0.5
-		var y := sin(u) * (1.0 - x * 0.35) * w * 0.85  # base oblique : un côté plus étroit
-		var p1 := b0 + dir * l * x - side * y
-		_tri(c, p1, prev, nrm, col)
-		prev = p1
+	var ink := Color(0.08, 0.14, 0.06)
+	var vein := col.darkened(0.25)
+	# contour : côté droit de la base à la pointe, puis côté gauche (plus étroit) de la pointe à la base
+	var cont: Array[Vector3] = [b0]
+	for k in range(1, LEAF_PTS + 1):
+		cont.append(_leaf_pt(b0, dir, side, l, wmax, k, 1.0))
+	for k in range(LEAF_PTS - 1, 0, -1):
+		cont.append(_leaf_pt(b0, dir, side, l, wmax, k, -0.85))
+	var c := b0 + dir * l * 0.42
+	for k in cont.size():
+		var p0 := cont[k]
+		var p1 := cont[(k + 1) % cont.size()]
+		_tri(c, p0, p1, nrm, col)
+		# contour fin : ruban sombre juste à l'extérieur du limbe
+		var o0 := p0 + (p0 - c).normalized() * 0.00035
+		var o1 := p1 + (p1 - c).normalized() * 0.00035
+		_tri(p0, o0, o1, nrm, ink)
+		_tri(p0, o1, p1, nrm, ink)
+	# pétiole + nervure centrale, puis nervures secondaires, légèrement décollés des deux faces
+	_line(s.end, b0 + dir * l * 0.95, 0.00025, nrm, ink)
+	for k in range(1, 6):
+		var x := k / 6.0 * 0.85
+		var x2 := x + 0.12
+		var m0 := b0 + dir * l * x
+		_line(m0, b0 + dir * l * x2 + side * _leaf_w(x2) * wmax * 0.85, 0.00012, nrm, vein)
+		_line(m0, b0 + dir * l * x2 - side * _leaf_w(x2) * wmax * 0.72, 0.00012, nrm, vein)
+
+
+## Point du bord de la feuille : x de 0 (base) à 1 (pointe), bord légèrement denté.
+func _leaf_pt(b0: Vector3, dir: Vector3, side: Vector3, l: float, wmax: float, k: int, sgn: float) -> Vector3:
+	var x := float(k) / LEAF_PTS
+	var y := _leaf_w(x) * wmax * sgn
+	if k < LEAF_PTS:
+		y *= 1.0 + 0.08 * (k % 2)
+	return b0 + dir * l * x + side * y
+
+
+## Largeur relative du limbe (0 à 1) : maximum vers 40 % de la longueur, pointe aiguë.
+func _leaf_w(x: float) -> float:
+	return pow(x, 0.6) * pow(1.0 - x, 0.9) / 0.364
+
+
+## Trait fin dans le plan de la feuille, dessiné sur les deux faces.
+func _line(a: Vector3, b: Vector3, half_w: float, nrm: Vector3, col: Color) -> void:
+	var w := (b - a).cross(nrm).normalized() * half_w
+	for lift in [0.00012, -0.00012]:
+		var o: Vector3 = nrm * lift
+		_tri(a - w + o, b - w + o, b + w + o, nrm, col)
+		_tri(a - w + o, b + w + o, a + w + o, nrm, col)
 
 
 func _tri(p0: Vector3, p1: Vector3, p2: Vector3, nrm: Vector3, col: Color) -> void:
