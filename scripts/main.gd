@@ -1,8 +1,8 @@
 extends Node
 ## Un bonsaï qui pousse et qu'on taille. Rendu cel shading en pleine résolution (3 tons nets,
 ## contours, ombres portées). Rotation au doigt, pincer pour zoomer.
-
-const REBUILD_MS := 250        # pendant que le temps défile, l'arbre est reconstruit au plus 4 fois/s
+## Pour avancer le temps : la période est calculée dans un fil de calcul (petit chargement), puis la pousse
+## est jouée par la carte graphique à partir d'un seul maillage (voir shaders/anim.gdshaderinc).
 
 var sim := TreeSim.new()
 var wood_mi := MeshInstance3D.new()
@@ -15,12 +15,17 @@ var pitch := 0.25
 var dist := 0.35
 var target := Vector3(0, 0.05, 0)
 var selected := -1
-var pending := 0      # semaines restant à jouer
-var frac := 0.0       # avancement dans la semaine en cours (pour voir les pousses s'allonger)
-var speed := 1.0      # semaines par seconde
 var show_leaves := true
 var layout := 0
-var last_build := 0
+var task := -1        # calcul de la période en cours (WorkerThreadPool), -1 si aucun
+var built := []       # résultat du calcul : maillages de fin de période
+var calc_ms := 0      # durée du dernier calcul
+var anim_t0 := 0.0    # période animée (semaines)
+var anim_t1 := 0.0
+var anim_now := 0.0
+var anim_dur := 1.0   # durée de l'animation (s)
+var playing := false
+var loader: Polygon2D
 
 var touches := {}
 var tap_start := Vector2.ZERO
@@ -53,8 +58,10 @@ func _ready() -> void:
 	world.add_child(sun)
 	world.add_child(wood_mi)
 	world.add_child(leaves_mi)
-	leaves_mi.material_override = TreeMesh.toon(0)
-	needles_mi.material_override = TreeMesh.toon(0)
+	leaves_mi.material_override = TreeMesh.toon(0, Color.WHITE, false, 2)
+	var nm := TreeMesh.toon(0, Color.WHITE, false, 2)
+	nm.set_shader_parameter("deciduous", false)
+	needles_mi.material_override = nm
 	world.add_child(needles_mi)
 	_add_pot()
 	cam.near = 0.005
@@ -123,6 +130,17 @@ func _build_ui() -> void:
 	box.add_child(row3)
 	_button(row3, "Nouvel orme", func(): _new_tree(Species.ELM))
 	_button(row3, "Nouveau pin", func(): _new_tree(Species.PINE))
+	# Chargement : une feuille qui tourne au milieu de l'écran pendant le calcul de la période.
+	loader = Polygon2D.new()
+	var pts := PackedVector2Array()
+	for k in 24:
+		var u := TAU * k / 24.0
+		pts.append(Vector2(cos(u) * 40.0, sin(u) * 18.0 * (1.0 - 0.4 * cos(u))) * ui_scale)
+	loader.polygon = pts
+	loader.color = Color(0.3, 0.58, 0.22)
+	loader.position = get_viewport().get_visible_rect().size * Vector2(0.5, 0.4)
+	loader.visible = false
+	layer.add_child(loader)
 	var bottom := Control.new()  # marge pour la barre de gestes du téléphone
 	bottom.custom_minimum_size.y = 40 * ui_scale
 	box.add_child(bottom)
@@ -138,60 +156,119 @@ func _button(parent: Control, text: String, cb: Callable) -> Button:
 	return b
 
 
-## Le temps défile à l'écran : ~0,7 s pour une semaine, ~2 s pour une saison, ~5 s pour un an.
+## Avance le temps : la période est simulée et maillée dans un fil de calcul (petit chargement), puis
+## jouée en animation fluide : ~1 s pour une semaine, ~3 s pour une saison, ~6 s pour un an.
 func _advance(weeks: int) -> void:
-	pending += weeks
-	speed = maxf(speed if pending > weeks else 0.0, weeks / (0.6 + weeks * 0.08))
+	if _busy():
+		return
+	selected = -1
+	sim.begin_period()
+	anim_t0 = sim.week
+	anim_t1 = sim.week + weeks
+	anim_dur = clampf(0.8 + weeks * 0.1, 1.0, 6.0)
+	var leaves := show_leaves
+	var t_start := anim_t0
+	var start_ms := Time.get_ticks_msec()
+	loader.visible = true
+	_set_buttons(false)
+	task = WorkerThreadPool.add_task(func():
+		for i in weeks:
+			sim.step_week()
+		built = TreeMesh.build(sim, PackedInt32Array(), t_start, sim.week, leaves)
+		calc_ms = Time.get_ticks_msec() - start_ms)
 
 
 func _process(delta: float) -> void:
-	if pending <= 0:
-		return
-	frac += delta * speed
-	while frac >= 1.0 and pending > 0:
-		sim.step_week()
-		pending -= 1
-		frac -= 1.0
-	if pending == 0:
-		frac = 0.0
-	if sim.layout != layout:  # des rameaux morts sont tombés : les indices ont changé
+	if task >= 0:
+		loader.rotation += delta * 4.0
+		if not WorkerThreadPool.is_task_completed(task):
+			return
+		WorkerThreadPool.wait_for_task_completion(task)
+		task = -1
+		loader.visible = false
 		layout = sim.layout
-		selected = -1
-	if pending == 0 or Time.get_ticks_msec() - last_build >= REBUILD_MS:
-		_refresh()
+		_show(built)
+		anim_now = anim_t0
+		playing = true
+	if playing:
+		anim_now = minf(anim_now + (anim_t1 - anim_t0) * delta / anim_dur, anim_t1)
+		_set_time(anim_now)
+		_info(anim_now)
+		if anim_now >= anim_t1:
+			_stop_anim()
+
+
+func _busy() -> bool:
+	return task >= 0 or playing
+
+
+## Fin de l'animation : le maillage de la période montre déjà l'arbre final, rien à recalculer.
+func _stop_anim() -> void:
+	playing = false
+	_set_time(anim_t1)
+	_info(anim_t1)
+	_set_buttons(true)
+	target.y = maxf(0.05, sim.height() * 0.45)
+	_update_cam()
+
+
+func _set_buttons(on: bool) -> void:
+	for b in panel.find_children("*", "Button", true, false):
+		b.disabled = not on
+	cut_btn.disabled = not on or selected <= 0
+
+
+func _set_time(time: float) -> void:
+	for mi in [wood_mi, leaves_mi, needles_mi]:
+		TreeMesh.set_time(mi.material_override, time, anim_t0, anim_t1)
+
+
+func _show(meshes: Array) -> void:
+	wood_mi.mesh = meshes[0]
+	leaves_mi.mesh = meshes[1]
+	needles_mi.mesh = meshes[2]
 
 
 func _cut() -> void:
-	if sim.prune(selected):
+	if not _busy() and sim.prune(selected):
 		selected = -1
 		layout = sim.layout
 		_refresh()
 
 
 func _toggle_leaves() -> void:
+	if _busy():
+		return
 	show_leaves = not show_leaves
 	_refresh()
 
 
 func _new_tree(species: Dictionary) -> void:
+	if _busy():
+		return
 	_set_species(species)
 	selected = -1
 	layout = sim.layout
-	pending = 0
-	frac = 0.0
 	dist = 0.35
 	_refresh()
 
 
+## Arbre immobile à la date actuelle (après une coupe, une sélection, un changement d'affichage).
 func _refresh() -> void:
 	var hl := sim.subtree(selected) if selected > 0 else PackedInt32Array()
-	var built := TreeMesh.build(sim, hl, sim.week + frac, show_leaves)
-	wood_mi.mesh = built[0]
-	leaves_mi.mesh = built[1]
-	needles_mi.mesh = built[2]
-	last_build = Time.get_ticks_msec()
+	anim_t0 = sim.week
+	anim_t1 = sim.week
+	_show(TreeMesh.build(sim, hl, sim.week, sim.week, show_leaves))
+	_set_time(sim.week)
 	cut_btn.disabled = selected <= 0
-	var w := sim.week % 52
+	_info(sim.week)
+	target.y = maxf(0.05, sim.height() * 0.45)
+	_update_cam()
+
+
+func _info(time: float) -> void:
+	var wk := floori(time)
+	var w := wk % 52
 	var season := "hiver"
 	if w >= 11 and w < 24:
 		season = "printemps"
@@ -199,10 +276,9 @@ func _refresh() -> void:
 		season = "été"
 	elif w >= 37 and w < 50:
 		season = "automne"
-	info.text = "%s · année %d · semaine %d (%s)\n%d segments · hauteur %d cm" % [
-		sim.name, sim.week / 52 + 1, w + 1, season, sim.segs.size(), roundi(sim.height() * 100.0)]
-	target.y = maxf(0.05, sim.height() * 0.45)
-	_update_cam()
+	var extra := "calcul %d ms" % calc_ms if calc_ms > 0 else "%d segments" % sim.segs.size()
+	info.text = "%s · année %d · semaine %d (%s)\n%s · hauteur %d cm" % [
+		sim.name, wk / 52 + 1, w + 1, season, extra, roundi(sim.height() * 100.0)]
 
 
 func _update_cam() -> void:
@@ -256,11 +332,16 @@ func _pinch_len() -> float:
 
 ## Sélectionne le segment le plus proche du doigt à l'écran.
 func _select_at(pos: Vector2) -> void:
+	if playing:  # toucher l'écran pendant l'animation : on saute à la fin
+		_stop_anim()
+		return
+	if task >= 0:
+		return
 	var best := -1
 	var best_d := 40.0 * ui_scale
 	for i in sim.segs.size():
 		var s := sim.segs[i]
-		if sim.growth(s, sim.week + frac) <= 0.0:
+		if sim.growth(s, sim.week) <= 0.0:
 			continue
 		if cam.is_position_behind(s.start) or cam.is_position_behind(s.end):
 			continue

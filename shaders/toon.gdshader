@@ -6,6 +6,14 @@
 shader_type spatial;
 render_mode cull_disabled, specular_disabled;
 
+#include "res://shaders/anim.gdshaderinc"
+
+uniform int anim = 0;  // 0 : immobile, 1 : bois animé, 2 : feuilles ou aiguilles animées
+uniform bool deciduous = true;  // feuilles qui jaunissent en automne
+uniform vec3 young_color : source_color = vec3(0.55, 0.47, 0.38);  // rameau de l'année
+uniform vec3 dry_color : source_color = vec3(0.85, 0.82, 0.75);    // bois mort
+uniform vec3 autumn_color : source_color = vec3(0.82, 0.6, 0.2);
+
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform int pattern = 0;
 uniform vec3 tone1 : source_color = vec3(0.56, 0.55, 0.5);
@@ -14,12 +22,29 @@ uniform vec3 tone3 : source_color = vec3(0.72, 0.5, 0.3);
 uniform vec3 fissure : source_color = vec3(0.33, 0.28, 0.24);
 
 varying vec3 wpos;
+varying float young_k;
+varying float dry_k;
+varying float autumn_k;
 
 float h(vec2 p, float s) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233)) + s) * 43758.5453);
 }
 
 void vertex() {
+	young_k = 0.0;
+	dry_k = 0.0;
+	autumn_k = 0.0;
+	if (anim == 1) {
+		float shown;
+		VERTEX = anim_wood(VERTEX, CUSTOM0, CUSTOM1, CUSTOM2, shown);
+		young_k = 1.0 - clamp((anim_time - CUSTOM0.x) / 52.0, 0.0, 1.0);
+		dry_k = (CUSTOM0.w >= 0.0 && anim_time >= CUSTOM0.w) ? 1.0 : 0.0;
+	} else if (anim == 2) {
+		VERTEX = anim_leaf(VERTEX, CUSTOM0, CUSTOM1);
+		if (deciduous) {
+			autumn_k = clamp((mod(anim_time, 52.0) - 40.0) / 5.0, 0.0, 1.0);  // jaunit en octobre
+		}
+	}
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
@@ -37,11 +62,14 @@ void fragment() {
 		} else if (pattern == 2 && k < 0.35) {
 			b = fissure;
 		}
+		b = mix(b, young_color, young_k * 0.35);
+		b = mix(b, dry_color, dry_k * 0.7);
 		c = mix(b, COLOR.rgb, COLOR.a);
 	} else if (pattern == 3) {
 		float k = h(floor(wpos.xz / 0.004), 4.0);
 		c = albedo.rgb * (k < 0.3 ? 1.25 : (k < 0.6 ? 1.0 : 0.8));
 	}
+	c = mix(c, autumn_color, autumn_k * 0.85);
 	ALBEDO = c;
 	if (!FRONT_FACING) {
 		NORMAL = -NORMAL;
