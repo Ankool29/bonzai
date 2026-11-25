@@ -130,11 +130,25 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 	for m in chain.size():
 		var s := sim.segs[chain[m]]
 		raw.append(s.start + (s.end - s.start) * seg_f[chain[m]])
+	var off := 0  # décalage entre raw et chain quand un point est ajouté au départ
 	if sim.segs[i0].parent >= 0:
-		# départ de branche : le début du tube est enfoncé dans le parent et pas plus épais que lui
-		var pr := sim.segs[sim.segs[i0].parent].radius
-		raw[0] -= (raw[1] - raw[0]).normalized() * pr * 0.5
-		r[0] = minf(r[0], pr * 0.95)
+		var par := sim.segs[sim.segs[i0].parent]
+		var pr := par.radius
+		var rc := r[0]
+		if rc > 0.5 * pr:
+			# Grosse branche : fourche en Y. Elle naît dans le parent, sur son axe, un peu sous le nœud,
+			# et s'en écarte doucement, comme deux troncs qui se séparent.
+			raw.insert(0, raw[0] - (par.end - par.start).normalized() * pr * 1.5)
+			r.insert(0, minf(pr * 0.85, rc * 1.1))
+			r[1] = rc * 1.05
+			off = 1
+		else:
+			# Petite branche : départ enfoncé dans le parent, avec un léger col.
+			raw[0] -= (raw[1] - raw[0]).normalized() * pr * 0.5
+			r[0] = minf(rc * 1.2, pr * 0.9)
+	# Continuité (règle des anneaux) : un anneau n'est jamais plus épais que celui qui le précède.
+	for m in range(1, r.size()):
+		r[m] = minf(r[m], r[m - 1])
 	# Décimation : anneaux espacés d'au moins 2,5 rayons, sinon un tube épais se replie dans les virages
 	# (c'était le tronc « en morceaux »).
 	var pts: Array[Vector3] = [raw[0]]
@@ -144,7 +158,7 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 		if m == raw.size() - 1 or raw[m].distance_to(pts[-1]) >= 2.5 * rad[rad.size() - 1]:
 			pts.append(raw[m])
 			rad.append(r[m])
-			col.append(seg_col[chain[mini(m, chain.size() - 1)]])
+			col.append(seg_col[chain[clampi(m - off, 0, chain.size() - 1)]])
 	# Lissage de Chaikin (coupe les angles sans jamais dépasser, contrairement à une spline)
 	for it in 3:
 		if pts.size() < 3:
@@ -168,7 +182,8 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 	var d := (pts[1] - pts[0]).normalized()
 	var a := _perp(d)
 	var v := 0.0
-	var prev := _ring(pts[0], d, a, rad[0], v, col[0])
+	var axis_seed := i0 * 0.37  # irrégularités propres à chaque axe
+	var prev := _ring(pts[0], d, a, rad[0], v, col[0], axis_seed)
 	_cap(prev, pts[0] - d * rad[0] * 0.5)
 	for m in range(1, pts.size()):
 		d = (pts[m] - pts[m - 1]).normalized()
@@ -176,7 +191,7 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 			d = (d + (pts[m + 1] - pts[m]).normalized()).normalized()
 		a = (a - d * a.dot(d)).normalized()  # transport parallèle : le tube ne se vrille pas
 		v += (pts[m] - pts[m - 1]).length()
-		var cur := _ring(pts[m], d, a, maxf(rad[m], 0.0008), v, col[m])
+		var cur := _ring(pts[m], d, a, maxf(rad[m], 0.0008), v, col[m], axis_seed)
 		_join(prev, cur)
 		prev = cur
 	_cap(prev, pts[-1] + d * maxf(rad[rad.size() - 1], 0.0008) * 0.6)
@@ -220,7 +235,7 @@ func _perp(d: Vector3) -> Vector3:
 
 ## Anneau de SIDES+1 sommets (le dernier double le premier pour fermer le motif d'écorce).
 ## UV = (fraction du tour, longueur en m), UV2.x = nombre de cellules d'écorce (~2,5 mm) sur le tour.
-func _ring(c: Vector3, d: Vector3, a: Vector3, r: float, v: float, col: Color) -> int:
+func _ring(c: Vector3, d: Vector3, a: Vector3, r: float, v: float, col: Color, axis_seed := 0.0) -> int:
 	a = (a - d * a.dot(d)).normalized()
 	var b := d.cross(a)
 	var cells := maxf(3.0, roundf(TAU * r / 0.0025))
@@ -228,7 +243,10 @@ func _ring(c: Vector3, d: Vector3, a: Vector3, r: float, v: float, col: Color) -
 	for k in SIDES + 1:
 		var ang := TAU * k / SIDES
 		var nrm := a * cos(ang) + b * sin(ang)
-		verts.append(c + nrm * r)
+		# Anneaux légèrement irréguliers (bosses, méplats) qui varient doucement le long du bois ;
+		# plus marqués sur le bois épais, nuls sur les rameaux fins.
+		var bump := 1.0 + minf(0.12, r * 8.0) * (0.6 * sin(2.0 * ang + axis_seed * 7.3 + v * 35.0) + 0.4 * sin(3.0 * ang + axis_seed * 3.1 - v * 55.0))
+		verts.append(c + nrm * r * bump)
 		norms.append(nrm)
 		uvs.append(Vector2(float(k) / SIDES, v))
 		uv2s.append(Vector2(cells, 0))
