@@ -6,3 +6,10 @@
 - Tronc et branches en tubes continus qui s'affinent ; nebari provisoire (évasement + 5 racines de surface).
 - Feuilles et aiguilles inchangées (elles deviennent des amas de pixels) ; rotation fluide.
 - Pot émaillé sourd, terre, touches de mousse.
+
+## Étape 5 bis — rendu voxel (validé, remplace le rendu ci-dessus)
+- L'arbre est converti en voxels de 3 mm (surface des branches seulement), dessinés en une MultiMesh.
+- Trois tons fixes par face (`shaders/voxel.gdshader`), légère variation par voxel, couleurs plus vives.
+- Épaisseur lissée le long de chaque segment (du rayon du segment à celui de son prolongement).
+- Feuilles d'orme et aiguilles de pin en touffes de voxels ; pot, terre et mousse en voxels.
+- Revoxelisation seulement quand l'arbre change, au plus 4 fois par seconde pendant que le temps défile.
