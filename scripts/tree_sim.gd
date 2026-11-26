@@ -78,7 +78,7 @@ var shed_ratio := 0.04        # lumière par entre-nœud sous laquelle une branc
 var bud_life := 52 * 8        # durée de vie d'un bourgeon dormant (semaines)
 var backbud_nodes := 4        # nœuds sous la coupe qui peuvent rebourgeonner
 var backbud_chance := 0.6
-var capacity := 1500          # entre-nœuds vivants que le pot peut nourrir (en attendant les racines)
+var capacity := 6000          # garde-fou de calcul : nombre d'entre-nœuds vivants au-delà duquel la pousse s'arrête
 var release_nodes := 3        # nœuds sous la coupe qui profitent de la levée de dominance
 var release_boost := 3.0
 var sprout_excess := 1.4      # réserves / lumière au-delà duquel des rejets apparaissent
@@ -168,6 +168,7 @@ func from_data(d: Dictionary) -> void:
 	for k in d:
 		if k != "segs" and k != "count" and k != "rng_seed" and k != "rng_state":
 			set(k, d[k])
+	capacity = maxi(capacity, 6000)  # les arbres plantés avant l'étape 15 avaient 1500 ou 3000
 	if not d.has("roots"):  # arbre sauvegardé avant l'étape 17
 		roots = maxf(reserve, 1.0)
 		reserve = roots
@@ -462,7 +463,9 @@ func _allocate(strength: float) -> void:
 	roots = maxf(roots, minf(minf(l, pot_volume * ROOTS_PER_LITRE), roots * 2.0 + 5.0))
 	var supply := minf(reserve + l, roots)
 	reserve = maxf(0.0, reserve - SPEND * supply * strength)
-	var pot := clampf(1.0 - float(segs[0].count) / capacity, 0.0, 1.0)  # garde-fou de calcul
+	# Garde-fou de calcul : sans effet jusqu'à 85 % de la limite, puis freine jusqu'à l'arrêt. (Le vrai frein
+	# biologique, c'est le pot, via les racines.)
+	var pot := clampf((capacity - segs[0].count) / (0.15 * capacity), 0.0, 1.0)
 	segs[0].vigor = alpha * supply * strength * pot
 	for s in segs:
 		var qm := segs[s.main_child].light if s.main_child >= 0 else s.q_term
