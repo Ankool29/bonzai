@@ -9,6 +9,7 @@ Godot 4.7, GDScript, cible mobile (Galaxy S25 Ultra). Le joueur parle français 
 - Aucun code sans cahier d'étape validé par le joueur.
 - Ne lis que les fichiers utiles à la tâche. Commence par ce plan, pas par une exploration du dépôt.
 - Réponses courtes : ce qui a changé et comment le tester, sans récapituler chaque étape.
+- Nouvelle espèce : d'abord une recherche botanique approfondie (pousses de l'année, entre-nœuds, phyllotaxie, ramification, poussées, réaction à la taille), sources citées dans le cahier d'étape et la fiche espèce, puis vérification dessinée avant d'envoyer.
 - Mets à jour `docs/A_CORRIGER.md` quand un défaut connu est corrigé ou découvert.
 
 ## Plan du code
