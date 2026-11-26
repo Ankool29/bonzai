@@ -33,6 +33,7 @@ class Seg:
 	var lat_q := 1.0         # qualité du bourgeon axillaire (puis vigueur propre du rameau latéral)
 	var release := 1.0       # bonus des bourgeons de ce nœud après une coupe (levée de dominance)
 	var relay := false       # bourgeon terminal avorté : la pousse repartira du dernier bourgeon latéral
+	var size_k := 1.0        # taille des feuilles selon la vigueur de la pousse
 	var leaf_k := 1.0        # place dans sa pousse (0 : base, 1 : bout) ; les feuilles grandissent vers le bout
 	var needle := 1.0        # pin : longueur relative des aiguilles (0 : base nue de la chandelle, couronne)
 	var forced := false      # pin : bourgeon né d'une coupe de chandelle, part même s'il est faible
@@ -103,7 +104,16 @@ var shadow := PackedFloat32Array()
 
 var segs: Array[Seg] = []
 var week := 0
-var reserve := 0.0            # vigueur que les racines peuvent fournir (suit la lumière avec retard)
+# Physiologie (étape 17). Unités : la lumière captée par la couronne (segs[0].light).
+var reserve := 1.0            # réserves (amidon) : remplies en été par les feuilles, dépensées à chaque poussée
+var roots := 1.0              # ce que les racines peuvent alimenter ; suivent la couronne, plafonnées par le pot
+var pot_volume := 8.0         # litres
+var low_years := 0            # années de suite à bout de réserves
+var last_vigor := 0.0         # vigueur moyenne des pousses de la dernière poussée
+var _vsum := 0.0
+var _vn := 0
+const ROOTS_PER_LITRE := 40.0  # lumière qu'un litre de pot peut alimenter (8 L : arbre d'environ 75 cm à 8 ans)
+const SPEND := 0.4             # part de l'apport puisée dans les réserves à chaque poussée (par unité de force)
 var layout := 0               # change quand des segments sont retirés (les indices changent)
 var fallen: Array = []        # rameaux morts tombés pendant la période : [début, fin, rayon, séchage, chute]
 var rng := RandomNumberGenerator.new()
@@ -116,7 +126,10 @@ func reset(seed_value: int = 1, species: Dictionary = Species.ELM, start_week :=
 		set(k, species[k])
 	rng.seed = seed_value
 	segs.clear()
-	reserve = 0.0
+	reserve = 1.0
+	roots = 1.0
+	pot_volume = 8.0
+	low_years = 0
 	week = start_week
 	planted = start_week
 	var s := Seg.new()
@@ -154,6 +167,9 @@ func from_data(d: Dictionary) -> void:
 	for k in d:
 		if k != "segs" and k != "count" and k != "rng_seed" and k != "rng_state":
 			set(k, d[k])
+	if not d.has("roots"):  # arbre sauvegardé avant l'étape 17
+		roots = maxf(reserve, 1.0)
+		reserve = roots
 	rng.seed = d["rng_seed"]
 	rng.state = d["rng_state"]
 	segs.clear()
@@ -186,6 +202,26 @@ func step_week() -> void:
 		_end_of_year()
 
 
+## Réserves rapportées aux racines : 1 = pleine santé, < 0,25 = épuisé.
+func health() -> float:
+	return reserve / maxf(roots, 0.001)
+
+
+## Rempotage : nouveau pot (litres) et part des racines coupées. Hors fin d'hiver, l'arbre souffre.
+## Renvoie un message pour le joueur.
+func repot(volume: float, cut: float) -> String:
+	pot_volume = volume
+	roots = minf(roots * (1.0 - cut), volume * ROOTS_PER_LITRE)
+	reserve *= 1.0 - cut * 0.5  # une part des réserves est dans les racines
+	var w := week % 52
+	if w >= 6 and w <= 14:
+		return "Rempoté au bon moment."
+	if cut > 0.0 and w >= 15 and w <= 40:
+		reserve *= 0.5
+		return "Racines coupées en pleine pousse : l'arbre souffre."
+	return "Rempoté hors saison : les racines repartiront au printemps."
+
+
 ## Coupe le segment i et tout ce qu'il porte. Renvoie false pour la base (on ne coupe pas tout l'arbre).
 const WOUND_MIN := 0.0015      # rayon au-delà duquel une coupe laisse une plaie (3 mm de diamètre)
 
@@ -196,6 +232,7 @@ func prune(i: int, concave := false) -> bool:
 		return false
 	var j := segs[i].parent
 	var cut := segs[i]
+	reserve = maxf(0.0, reserve - 0.5 * cut.light)  # l'énergie investie dans le feuillage coupé est perdue
 	var y0 := floorf(week / 52.0) * 52.0
 	# Pin : chandelle de l'année coupée à sa base = mekiri. Couronne de 0 à 4 entre-nœuds (n + 1 bourgeons)
 	# selon la vigueur de la chandelle retirée ; elle part 2 à 4 semaines plus tard si on coupe de fin mai
@@ -276,6 +313,8 @@ func height() -> float:
 
 func _flush(strength: float) -> void:
 	flush_now = strength
+	_vsum = 0.0
+	_vn = 0
 	_compute_shadow()
 	_basipetal()
 	if _sprouts():
@@ -283,6 +322,8 @@ func _flush(strength: float) -> void:
 	_allocate(strength)
 	_grow()
 	_basipetal()
+	if _vn > 0:
+		last_vigor = _vsum / _vn
 
 
 func _end_of_year() -> void:
@@ -298,7 +339,15 @@ func _end_of_year() -> void:
 			s.lat_bud_age += 52
 			if s.lat_bud_age > bud_life:
 				s.lat_bud = false
-	reserve = lerpf(reserve, segs[0].light, 0.5)  # les racines s'ajustent en un an ou deux
+	# Épuisement : deux hivers de suite sans réserves et presque sans feuillage, l'arbre meurt.
+	low_years = low_years + 1 if health() < 0.1 and segs[0].light < 0.3 * roots else 0
+	if low_years >= 2:
+		for q in segs:
+			if not q.dry:
+				q.dry = true
+				q.dry_week = week
+			q.term_bud = false
+			q.lat_bud = false
 	# Cerne annuel : chaque entre-nœud vivant ajoute une couche de bois proportionnelle au feuillage
 	# qu'il porte (loi de Pressler). Le bas du tronc, qui porte tout, épaissit le plus : conicité continue,
 	# et le tronc continue de grossir même après une taille.
@@ -328,7 +377,7 @@ func _end_of_year() -> void:
 ## Rejets : quand les racines fournissent bien plus que la couronne ne peut employer (après une
 ## taille sévère), des bourgeons adventifs percent sur le vieux bois, surtout en bas du tronc.
 func _sprouts() -> bool:
-	var excess := reserve / maxf(segs[0].light, 0.01)
+	var excess := roots / maxf(segs[0].light, 0.01)  # racines trop grosses pour la couronne
 	if max_sprouts == 0 or excess < sprout_excess or segs.size() < 10:
 		return false
 	var n := mini(int((excess - sprout_excess) * 4.0) + 1, max_sprouts)
@@ -356,6 +405,12 @@ func _sprouts() -> bool:
 func _dieback() -> void:
 	_compute_shadow()
 	_basipetal()
+	# Fin d'été : les feuilles ont rempli les réserves ; les racines suivent la couronne (rapport racines /
+	# couronne constant), sans dépasser le pot, et meurent à moitié de l'excès quand la couronne a été réduite.
+	var l := segs[0].light
+	reserve = minf(reserve + l, 1.5 * roots)
+	var t := minf(l, pot_volume * ROOTS_PER_LITRE)
+	roots = minf(t, roots * 2.0 + 5.0) if t > roots else roots + (t - roots) * 0.5
 	for i in range(1, segs.size()):
 		var s := segs[i]
 		if s.dry:
@@ -398,10 +453,14 @@ func _basipetal() -> void:
 
 
 ## De la base vers les feuilles : répartition de la vigueur (Borchert-Honda).
+## Apport d'une poussée : feuillage actuel plus réserves, plafonné par les racines ; les réserves en paient une part.
 func _allocate(strength: float) -> void:
-	reserve = maxf(reserve, segs[0].light)
-	var pot := clampf(1.0 - float(segs[0].count) / capacity, 0.0, 1.0)
-	segs[0].vigor = alpha * reserve * strength * pot
+	var l := segs[0].light
+	roots = maxf(roots, minf(minf(l, pot_volume * ROOTS_PER_LITRE), roots * 2.0 + 5.0))
+	var supply := minf(reserve + l, roots)
+	reserve = maxf(0.0, reserve - SPEND * supply * strength)
+	var pot := clampf(1.0 - float(segs[0].count) / capacity, 0.0, 1.0)  # garde-fou de calcul
+	segs[0].vigor = alpha * supply * strength * pot
 	for s in segs:
 		var qm := segs[s.main_child].light if s.main_child >= 0 else s.q_term
 		var ql := segs[s.lat_child].light if s.lat_child >= 0 else s.q_lat
@@ -445,6 +504,8 @@ func _grow() -> void:
 ## Vigueur < 1 : rameau court (un entre-nœud raccourci). Sinon environ v entre-nœuds (arrondi au hasard),
 ## d'autant plus longs que la pousse est vigoureuse, plus courts au début et à la fin du rameau.
 func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
+	_vsum += v
+	_vn += 1
 	var spur := v < 1.0
 	var n := 1 if spur else clampi(int(v + rng.randf()), 1, max_per_flush)
 	if preformed > 0:
@@ -464,6 +525,7 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 		s.parent = prev
 		s.start = p
 		s.leaf_k = float(k + 1) / n
+		s.size_k = clampf(0.6 + 0.25 * v, 0.6, 1.3)  # pousse faible : petites feuilles (miniaturisation)
 		var profile := 1.0 if spur else 0.85 + 0.35 * sin(PI * (k + 0.5) / n)
 		if opposite and not spur:
 			profile = 0.35 if k == 0 else 0.8 + 0.5 * float(k) / n  # première paire serrée, puis de plus en plus long
