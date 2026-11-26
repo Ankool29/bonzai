@@ -270,8 +270,7 @@ func _advance(weeks: int) -> void:
 	if _busy():
 		return
 	_clear_cut()
-	for t in garden.trees:
-		t.begin_period()
+	sim.begin_period()
 	anim_t0 = sim.week
 	anim_t1 = sim.week + weeks
 	anim_dur = clampf(0.8 + weeks * 0.1, 1.0, 6.0)
@@ -281,9 +280,8 @@ func _advance(weeks: int) -> void:
 	loader.visible = true
 	_set_buttons(false)
 	task = WorkerThreadPool.add_task(func():
-		for t in garden.trees:  # un seul calendrier : tout le jardin pousse, seul l'arbre ouvert est maillé
-			for i in weeks:
-				t.step_week()
+		for i in weeks:  # chaque arbre a sa propre date : seul l'arbre ouvert pousse
+			sim.step_week()
 		built = TreeMesh.build(sim, PackedInt32Array(), t_start, sim.week, leaves)
 		calc_ms = Time.get_ticks_msec() - start_ms)
 
@@ -305,7 +303,7 @@ func _process(delta: float) -> void:
 		task = -1
 		loader.visible = false
 		layout = sim.layout
-		garden.save_all()
+		garden.save_tree(garden.current)
 		_show(built)
 		anim_now = anim_t0
 		playing = true
