@@ -4,7 +4,9 @@ extends Node
 ## Pour avancer le temps : la période est calculée dans un fil de calcul (petit chargement), puis la pousse
 ## est jouée par la carte graphique à partir d'un seul maillage (voir shaders/anim.gdshaderinc).
 
-var sim := TreeSim.new()
+var garden := Garden.new()
+var sim: TreeSim             # arbre ouvert
+var garden_panel: PanelContainer
 var wood_mi := MeshInstance3D.new()
 var leaves_mi := MeshInstance3D.new()
 var needles_mi := MeshInstance3D.new()
@@ -90,9 +92,10 @@ func _ready() -> void:
 	overlay.mesh = ImmediateMesh.new()
 	world.add_child(overlay)
 	_build_ui()
-	_set_species(Species.ELM)
-	_refresh()
-	_recenter()
+	garden.load_all()
+	if garden.trees.is_empty():
+		garden.add(Species.ELM)
+	_open(garden.current)
 
 
 ## Pot rectangulaire en terre cuite, terre d'akadama en granulés.
@@ -113,11 +116,18 @@ func _add_pot() -> void:
 	world.add_child(soil)
 
 
-func _set_species(species: Dictionary) -> void:
-	sim.reset(randi(), species)
+## Ouvre l'arbre i du jardin.
+func _open(i: int) -> void:
+	garden.current = i
+	garden.save_index()
+	sim = garden.trees[i]
 	wood_mi.material_override = TreeMesh.bark_material(sim)
 	var lm := leaves_mi.material_override as ShaderMaterial
 	lm.set_shader_parameter("autumn_color", sim.autumn_color)
+	_clear_cut()
+	layout = sim.layout
+	_refresh()
+	_recenter()
 
 
 func _build_ui() -> void:
@@ -164,9 +174,7 @@ func _build_ui() -> void:
 	var row3 := HBoxContainer.new()
 	box.add_child(row3)
 	_button(row3, "Feuilles", _toggle_leaves)
-	_button(row3, "Orme", func(): _new_tree(Species.ELM))
-	_button(row3, "Pin", func(): _new_tree(Species.PINE))
-	_button(row3, "Érable", func(): _new_tree(Species.MAPLE))
+	_button(row3, "Jardin", _show_garden)
 	_button(row3, "Recentrer", _recenter)
 	# Chargement : une feuille qui tourne au milieu de l'écran pendant le calcul de la période.
 	loader = Polygon2D.new()
@@ -182,6 +190,67 @@ func _build_ui() -> void:
 	var bottom := Control.new()  # marge pour la barre de gestes du téléphone
 	bottom.custom_minimum_size.y = 40 * ui_scale
 	box.add_child(bottom)
+	garden_panel = PanelContainer.new()  # liste des arbres, par-dessus tout
+	garden_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	garden_panel.theme = theme
+	garden_panel.visible = false
+	layer.add_child(garden_panel)
+
+
+## Jardin : une ligne par arbre (toucher pour l'ouvrir, « Suppr. » deux fois pour le supprimer),
+## puis les boutons pour mettre un nouvel arbre en pot.
+func _show_garden() -> void:
+	if _busy():
+		return
+	for c in garden_panel.get_children():
+		c.queue_free()
+	var box := VBoxContainer.new()
+	garden_panel.add_child(box)
+	var top := Control.new()
+	top.custom_minimum_size.y = 60 * ui_scale
+	box.add_child(top)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
+	for i in garden.trees.size():
+		var t := garden.trees[i]
+		var row := HBoxContainer.new()
+		list.add_child(row)
+		var age := (t.week - t.planted) / 52
+		var label := "%s · %d an%s · %d cm" % [garden.names[i], age, "s" if age > 1 else "", roundi(t.height() * 100.0)]
+		var open := _button(row, ("> " if i == garden.current else "") + label, func():
+			garden_panel.visible = false
+			_open(i))
+		open.size_flags_stretch_ratio = 4.0
+		var del := _button(row, "Suppr.", Callable())
+		del.pressed.connect(func():
+			if garden.trees.size() <= 1:
+				_say("Il faut garder au moins un arbre.")
+			elif del.text != "Sûr ?":
+				del.text = "Sûr ?"
+			else:
+				var was_open := i == garden.current
+				garden.remove(i)
+				if was_open:
+					_open(garden.current)
+				_show_garden())
+	var row2 := HBoxContainer.new()
+	box.add_child(row2)
+	for sp in [Species.ELM, Species.PINE, Species.MAPLE]:
+		_button(row2, "+ " + str(sp["name"]).split(" ")[0], func():
+			garden_panel.visible = false
+			garden.add(sp)
+			_open(garden.current))
+	var row3 := HBoxContainer.new()
+	box.add_child(row3)
+	_button(row3, "Fermer", func(): garden_panel.visible = false)
+	var bottom := Control.new()
+	bottom.custom_minimum_size.y = 40 * ui_scale
+	box.add_child(bottom)
+	garden_panel.visible = true
 
 
 func _button(parent: Control, text: String, cb: Callable) -> Button:
@@ -189,7 +258,8 @@ func _button(parent: Control, text: String, cb: Callable) -> Button:
 	b.text = text
 	b.custom_minimum_size.y = 90 * ui_scale
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	b.pressed.connect(cb)
+	if cb.is_valid():
+		b.pressed.connect(cb)
 	parent.add_child(b)
 	return b
 
@@ -200,7 +270,8 @@ func _advance(weeks: int) -> void:
 	if _busy():
 		return
 	_clear_cut()
-	sim.begin_period()
+	for t in garden.trees:
+		t.begin_period()
 	anim_t0 = sim.week
 	anim_t1 = sim.week + weeks
 	anim_dur = clampf(0.8 + weeks * 0.1, 1.0, 6.0)
@@ -210,8 +281,9 @@ func _advance(weeks: int) -> void:
 	loader.visible = true
 	_set_buttons(false)
 	task = WorkerThreadPool.add_task(func():
-		for i in weeks:
-			sim.step_week()
+		for t in garden.trees:  # un seul calendrier : tout le jardin pousse, seul l'arbre ouvert est maillé
+			for i in weeks:
+				t.step_week()
 		built = TreeMesh.build(sim, PackedInt32Array(), t_start, sim.week, leaves)
 		calc_ms = Time.get_ticks_msec() - start_ms)
 
@@ -233,6 +305,7 @@ func _process(delta: float) -> void:
 		task = -1
 		loader.visible = false
 		layout = sim.layout
+		garden.save_all()
 		_show(built)
 		anim_now = anim_t0
 		playing = true
@@ -295,6 +368,7 @@ func _cut() -> void:
 		_say("Trop épais pour les ciseaux : prends la pince concave.")
 		return
 	if sim.prune(i, tool == 2):
+		garden.save_tree(garden.current)
 		_clear_cut()
 		layout = sim.layout
 		_refresh()
@@ -318,16 +392,6 @@ func _toggle_leaves() -> void:
 		return
 	show_leaves = not show_leaves
 	_refresh()
-
-
-func _new_tree(species: Dictionary) -> void:
-	if _busy():
-		return
-	_set_species(species)
-	_clear_cut()
-	layout = sim.layout
-	_refresh()
-	_recenter()
 
 
 ## Arbre immobile à la date actuelle (après une coupe, une sélection, un changement d'affichage).
@@ -362,7 +426,7 @@ func _info(time: float) -> void:
 		season = "automne"
 	var extra := "calcul %d ms" % calc_ms if calc_ms > 0 else "%d segments" % sim.segs.size()
 	info.text = "%s · année %d · semaine %d (%s)\n%s · hauteur %d cm" % [
-		sim.name, wk / 52 + 1, w + 1, season, extra, roundi(sim.height() * 100.0)]
+		garden.names[garden.current], wk / 52 + 1, w + 1, season, extra, roundi(sim.height() * 100.0)]
 
 
 func _update_cam() -> void:
