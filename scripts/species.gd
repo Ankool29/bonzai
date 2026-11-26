@@ -35,6 +35,8 @@ const ELM := {
 	"autumn_color": Color(0.82, 0.6, 0.2),
 	"opposite": false,
 	"fork": false,
+	"bud_color": Color(0.42, 0.28, 0.18),
+	"bud_size": 0.0025,
 	"whorl": 0,          # bourgeon latéral à chaque nœud
 	"leaf_years": 0,     # caduc
 }
@@ -73,6 +75,8 @@ const PINE := {
 	"autumn_color": Color(0.82, 0.6, 0.2),
 	"opposite": false,
 	"fork": false,
+	"bud_color": Color(0.86, 0.83, 0.76),
+	"bud_size": 0.012,
 	"whorl": 4,
 	"leaf_years": 3,
 }
@@ -111,6 +115,8 @@ const MAPLE := {
 	"capacity": 6000,
 	"max_sprouts": 2,
 	"flushes": {14: 1.0, 24: 0.5},
+	"bud_color": Color(0.62, 0.16, 0.12),
+	"bud_size": 0.003,
 	"whorl": 0,
 	"leaf_years": 0,
 }

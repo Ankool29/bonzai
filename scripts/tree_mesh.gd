@@ -73,7 +73,7 @@ static func set_time(mat: ShaderMaterial, time: float, t_start: float, t_end: fl
 
 
 static func bark_material(s: TreeSim) -> ShaderMaterial:
-	var mat := toon(1 if s.leaf_years == 0 else 2, Color.WHITE, true, 1)
+	var mat := toon(2 if s.leaf_years > 0 else (4 if s.leaf_shape == 1 else 1), Color.WHITE, true, 1)
 	for k in 4:
 		mat.set_shader_parameter(["tone1", "tone2", "tone3", "fissure"][k], s.bark_colors[k])
 	mat.set_shader_parameter("young_color", s.young_color)
@@ -103,6 +103,8 @@ func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 		seg_col[i] = col
 	# Hiérarchie des axes : à chaque nœud, l'enfant le plus gros continue l'axe (quel que soit son bourgeon),
 	# les autres ouvrent un axe d'ordre suivant. Après une coupe, la branche qui reprend prolonge l'axe.
+	var year_now := floorf(t / 52.0)
+	var spring: float = year_now * 52.0 + float(sim.flushes.keys().min())
 	cont.resize(n)
 	for i in n:
 		var s := sim.segs[i]
@@ -117,6 +119,16 @@ func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 			_axis(i, seg_f, seg_col)
 		if leaves and not s.dry:
 			_foliage(s, weak[i] == 1, marked.has(i))
+			# Rameaux courts : au printemps, un bourgeon latéral dormant du bois de 1-2 ans débourre en rosette
+			# de feuilles sans s'allonger (2 feuilles, 1 pour les bourgeons opposés). Purement visuel.
+			if sim.leaf_years == 0 and weak[i] == 0 and s.lat_bud and s.lat_child < 0:
+				var age := year_now - floorf(s.born / 52.0)
+				if age >= 1.0 and age <= 2.0 and spring <= t:
+					_foliage(s, false, marked.has(i), 0.6, 0.8, spring)
+					if not sim.opposite:
+						_foliage(s, false, marked.has(i), -0.6, 0.55, spring)
+		if not s.dry and seg_f[i] >= 1.0 and t - s.born < 156.0:
+			_buds(s)
 		if s.wound_r > 0.0:
 			_wound(s)
 	if n > 0:
@@ -258,6 +270,29 @@ func _flutes(lat: Array, c: Vector3, p: float, d: Vector3, r: float) -> Array:
 			continue
 		out.append([fd.normalized(), minf(0.6, 0.5 * l[3] / maxf(r, 0.000001)) * f])
 	return out
+
+
+## Bourgeons vivants du bois de moins de 3 ans : latéral à l'aisselle (plaqué contre le rameau), terminal au bout.
+func _buds(s: TreeSim.Seg) -> void:
+	var axis := (s.end - s.start).normalized()
+	var born := s.born + s.grow_time
+	var small := 0.7 if sim.whorl > 0 else 1.0  # pin : bourgeons de la couronne plus petits que le terminal
+	if s.lat_bud and s.lat_child < 0:
+		var side := (s.lat_dir - axis * axis.dot(s.lat_dir)).normalized()
+		_bud(s.end + side * s.radius * 0.8, (s.lat_dir.normalized() + axis).normalized(), sim.bud_size * small, born)
+	if s.term_bud and s.main_child < 0:
+		_bud(s.end, axis, sim.bud_size * (1.0 if sim.whorl > 0 else 1.2), born)
+
+
+## Bourgeon ovale (base, ventre, pointe), couleur unie de l'espèce, contour compris.
+func _bud(p: Vector3, d: Vector3, l: float, born: float) -> void:
+	var a0 := Vector4(born, 1.0, 1.0, -1.0)
+	var a := _perp(d)
+	var r := l * 0.32
+	var r0 := _ring(p, d, a, r * 0.7, 0.0, sim.bud_color, 0.0, a0, Vector4.ZERO)
+	var r1 := _ring(p + d * l * 0.45, d, a, r, 0.0, sim.bud_color, 0.0, a0, Vector4.ZERO)
+	_join(r0, r1)
+	_cap(r1, p + d * l, true)
 
 
 ## Ferme un bout de tube (pointe, coupe) par un petit cône : plus de tube creux visible.
@@ -426,7 +461,8 @@ func _join(r0: int, r1: int) -> void:
 ## Feuillage d'un segment sur la période : feuilles d'orme (pousses de l'année, jusqu'à leur chute en
 ## novembre) ou aiguilles de pin (pendant leaf_years ans). Dessiné à pleine taille ; le shader le fait
 ## pousser, jaunir et tomber.
-func _foliage(s: TreeSim.Seg, weak: bool, selected: bool) -> void:
+## turn, scale, born : feuille de rosette (tournée autour de la verticale, plus petite, née au printemps).
+func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 1.0, born := -1.0) -> void:
 	var h := fposmod(sin(s.end.x * 91.3 + s.end.y * 13.7 + s.end.z * 47.1) * 43758.5, 1.0)  # hasard fixe
 	var col := Color.WHITE
 	if sim.leaf_years > 0:
@@ -434,7 +470,8 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool) -> void:
 		if gone >= t0:
 			_needles(s, h, weak, selected, gone)
 		return
-	var fall := floorf(s.born / 52.0) * 52.0 + 44.0 + h * 4.0  # chute étalée sur novembre
+	var b := s.born if born < 0.0 else born
+	var fall := floorf(b / 52.0) * 52.0 + 44.0 + h * 4.0  # chute étalée sur novembre
 	if fall < t0:
 		return
 	if weak:
@@ -443,14 +480,14 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool) -> void:
 		col *= Color(1.0, 0.9, 0.55)
 	if selected:
 		col = Color(1.0, 0.35, 0.3)
-	lanim = [Vector4(s.born, s.grow_time, fall, 0.0), s.end]
+	lanim = [Vector4(b, s.grow_time if born < 0.0 else 2.0, fall, 0.0), s.end]
 	# Feuille d'orme : pétiole de 3 mm au nœud qui se prolonge en nervure centrale (liseré sombre),
 	# limbe ovale le plus large sous le milieu, pointe aiguë, base oblique, bord finement denté, contour fin,
 	# 5 paires de nervures. Limbe presque horizontal dans le prolongement du bourgeon (alternes, deux rangs).
-	var dir := Vector3(s.lat_dir.x, s.lat_dir.y * 0.3, s.lat_dir.z).normalized()
+	var dir := Vector3(s.lat_dir.x, s.lat_dir.y * 0.3, s.lat_dir.z).normalized().rotated(Vector3.UP, turn)
 	var side := Vector3.UP.cross(dir).normalized().rotated(dir, (h - 0.5) * 0.8)
 	var nrm := dir.cross(side).normalized()
-	var l := sim.foliage_size * (0.6 + 0.4 * s.leaf_k)  # feuilles plus petites à la base de la pousse
+	var l := sim.foliage_size * (0.6 + 0.4 * s.leaf_k) * scale  # feuilles plus petites à la base de la pousse
 	var wmax := l * 0.27
 	var b0 := s.end + dir * 0.003  # base du limbe, au bout du pétiole
 	if not selected:

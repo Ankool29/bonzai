@@ -1,7 +1,7 @@
 // Cel shading : éclairage arrondi à 3 tons nets (lumière, mi-teinte, ombre), ombres portées nettes.
 // L'ombre prend la couleur de la lumière ambiante (bleutée), pas du gris.
 // pattern : 0 = couleur de sommet × albedo ; 1 = écorce d'orme (plaques) ; 2 = écorce de pin (fissures) ;
-// 3 = terre (granulés). Écorce : UV.x = fraction du tour, UV.y = longueur (m), UV2.x = cellules de 2,5 mm
+// 3 = terre (granulés) ; 4 = écorce d'érable (lisse, stries). Écorce : UV.x = fraction du tour, UV.y = longueur (m), UV2.x = cellules de 2,5 mm
 // sur le tour ; couleur de sommet rgb = teinte, a = part de teinte unie (rameau de l'année, bois mort, sélection).
 shader_type spatial;
 render_mode cull_disabled, specular_disabled;
@@ -30,6 +30,32 @@ float h(vec2 p, float s) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233)) + s) * 43758.5453);
 }
 
+// Cellules de Voronoï, périodiques en x (le tour du tronc) : (distance au centre, écart au bord, hasard de la cellule).
+vec3 voro(vec2 p, float per, float sd) {
+	vec2 ip = floor(p);
+	vec2 fp = fract(p);
+	float d1 = 9.0;
+	float d2 = 9.0;
+	float id = 0.0;
+	for (int j = -1; j <= 1; j++) {
+		for (int i = -1; i <= 1; i++) {
+			vec2 g = vec2(float(i), float(j));
+			vec2 c = ip + g;
+			c.x = mod(c.x, per);
+			vec2 r = g + vec2(h(c, sd), h(c, sd + 5.0)) * 0.8 + 0.1 - fp;
+			float d = dot(r, r);
+			if (d < d1) {
+				d2 = d1;
+				d1 = d;
+				id = h(c, sd + 9.0);
+			} else if (d < d2) {
+				d2 = d;
+			}
+		}
+	}
+	return vec3(sqrt(d1), sqrt(d2) - sqrt(d1), id);
+}
+
 void vertex() {
 	young_k = 0.0;
 	dry_k = 0.0;
@@ -50,23 +76,37 @@ void vertex() {
 
 void fragment() {
 	vec3 c = albedo.rgb * COLOR.rgb;
-	if (pattern == 1 || pattern == 2) {
-		// grandes plaques : 4 cellules de 2,5 mm par plaque autour du tronc, 12 à 20 mm de long
-		float big = max(floor(UV2.x / 4.0), 1.0);
-		float cu = mod(floor(UV.x * big), big);
-		float row = floor(UV.y / (pattern == 1 ? 0.012 : 0.02) + h(vec2(cu, 0.0), 1.0));
-		float k = h(vec2(cu, row), 9.0);
+	if (pattern == 1 || pattern == 2 || pattern == 4) {
 		vec3 b = tone1;
-		if (pattern == 1 && big >= 3.0) {
-			b = k < 0.5 ? tone1 : (k < 0.8 ? tone2 : tone3);
+		if (pattern == 1) {
+			// orme de Chine : plaques arrondies de tailles variées qui s'écaillent (gris, beige, orangé, vert)
+			float per = max(floor(UV2.x / 3.0), 1.0);
+			vec3 v = voro(vec2(UV.x * per, UV.y / 0.012), per, 1.0);
+			vec3 w = voro(vec2(UV.x * per * 2.0, UV.y / 0.006), per * 2.0, 4.0);  // petites écailles par-dessus
+			float id = w.z < 0.25 ? w.z * 4.0 : v.z;
+			if (per >= 2.0) {
+				b = id < 0.45 ? tone1 : (id < 0.7 ? tone2 : (id < 0.88 ? tone3 : mix(tone1, vec3(0.5, 0.56, 0.4), 0.6)));
+				if (v.y < 0.04 && v.z < 0.6) {
+					b = mix(b, fissure, 0.4);
+				}
+			}
 		} else if (pattern == 2) {
-			// pin : plaques (« carapace de tortue ») séparées de fissures, qui s'élargissent avec le diamètre ;
-			// jeune bois lisse
-			float w = 0.14 * clamp((big - 1.0) / 3.0, 0.0, 1.0);
-			float fr = fract(UV.y / 0.02 + h(vec2(cu, 0.0), 1.0));
-			b = k < 0.5 ? tone1 : tone2;
-			if (fract(UV.x * big) < w || fr < w * 0.8) {
-				b = fissure;
+			// pin noir : épaisses plaques allongées, fissures brun-rouge qui se creusent avec l'âge ; jeune bois lisse
+			float per = max(floor(UV2.x / 5.0), 1.0);
+			vec3 v = voro(vec2(UV.x * per, UV.y / 0.035), per, 2.0);
+			float w = 0.03 + 0.09 * clamp((per - 1.0) / 3.0, 0.0, 1.0);
+			if (UV2.x >= 8.0) {
+				b = v.z < 0.5 ? tone1 : tone2;
+				if (v.y < w) {
+					b = fissure;
+				}
+			}
+		} else {
+			// érable : lisse, gris-vert, fines stries claires interrompues dans le sens du bois
+			float col = floor(UV.x * UV2.x * 1.5);
+			float k = h(vec2(col, 0.0), 3.0);
+			if (k > 0.85 && fract(UV.y / 0.03 + k * 7.0) < 0.6) {
+				b = tone2;
 			}
 		}
 		b = mix(b, young_color, young_k * 0.35);
