@@ -249,11 +249,11 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 		a = (a - d * a.dot(d)).normalized()  # transport parallèle : le tube ne se vrille pas
 		v += (pts[m] - pts[m - 1]).length()
 		an = _ring_anim(pidx[m], chain, off, seg_f)
-		var cur := _ring(pts[m], d, a, maxf(rad[m], 0.0004), v, col[m], axis_seed, an[0], an[1], NEVER,
+		var cur := _ring(pts[m], d, a, maxf(rad[m], 0.00025), v, col[m], axis_seed, an[0], an[1], NEVER,
 				_flutes(lat, pts[m], pidx[m], d, rad[m]))
 		_join(prev, cur)
 		prev = cur
-	_cap(prev, pts[-1] + d * maxf(rad[rad.size() - 1], 0.0004) * 0.6, true)
+	_cap(prev, pts[-1] + d * maxf(rad[rad.size() - 1], 0.00025) * 0.6, true)
 
 
 ## Côtes d'un anneau : une par branche portée plus haut, qui s'efface en descendant (sur 12 rayons de branche).
