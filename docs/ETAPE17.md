@@ -20,3 +20,6 @@ Massey (tomate : l'expansion des feuilles réagit le plus à la restriction des 
 - Essais (portage Python, orme) : croissance libre identique à avant ; petit pot = arbre plus petit et plus
   fin ; grosse coupe = repousse vigoureuse ; taillé 3 fois par an à 10 cm = s'affaiblit la 1re année puis
   s'adapte en buisson.
+
+- Ajout : le cerne annuel est multiplié par racines / couronne (≤ 1) : un pot plein freine l'épaississement
+  (orme à 12 ans : rayon 26 mm en 8 L, 18 mm en 3 L, 11 mm en 1 L). Racines du nebari limitées au pot.

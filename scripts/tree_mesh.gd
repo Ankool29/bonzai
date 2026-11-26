@@ -350,6 +350,7 @@ func _nebari() -> void:
 	var r := sim.segs[0].radius
 	var n := 4 + int(absf(sin(sim.segs[0].lat_dir.x * 91.7 + sim.planted)) * 40.0) % 4
 	var l := r * (2.5 + 1.5 * (1.4 if sim.leaf_shape == 1 else 1.0))
+	l = maxf(0.0, minf(l, 0.1 * pow(sim.pot_volume / 8.0, 1.0 / 3.0) - r * 0.7))  # restent dans le pot (11 cm de demi-largeur à 8 L)
 	var a0 := Vector4(-1000.0, 1.0, _ratio(sim.segs[0]), -1.0)
 	for k in n:
 		var ang := k * TAU / n + 0.5 * sin(k * 7.1)

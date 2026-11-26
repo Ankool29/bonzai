@@ -351,11 +351,13 @@ func _end_of_year() -> void:
 			q.lat_bud = false
 	# Cerne annuel : chaque entre-nœud vivant ajoute une couche de bois proportionnelle au feuillage
 	# qu'il porte (loi de Pressler). Le bas du tronc, qui porte tout, épaissit le plus : conicité continue,
-	# et le tronc continue de grossir même après une taille.
+	# et le tronc continue de grossir même après une taille. Quand le pot est plein, les racines ne nourrissent
+	# qu'une part de la couronne : le bois produit diminue d'autant (petit pot = tronc qui grossit peu).
+	var rf := minf(1.0, roots / maxf(segs[0].light, 0.01))
 	for s in segs:
 		if not s.dry:
 			var old := s.radius
-			s.radius = sqrt(s.radius * s.radius + ring_area * leaf_area * s.light / PI)
+			s.radius = sqrt(s.radius * s.radius + ring_area * leaf_area * s.light * rf / PI)
 			if s.wound_r > 0.0:
 				# le bourrelet de cicatrisation avance avec le cerne, deux fois plus vite après la pince concave
 				s.wound_r = maxf(0.0, s.wound_r - (s.radius - old) * (6.0 if s.wound_concave else 3.0))
