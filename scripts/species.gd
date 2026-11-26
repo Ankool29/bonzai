@@ -9,10 +9,16 @@ const ELM := {
 	# rameaux fins gris-brun ; écorce : voir le mode « lacebark » du shader
 	"bark_colors": [Color(0.55, 0.52, 0.47), Color(0.63, 0.6, 0.55), Color(0.62, 0.45, 0.32), Color(0.33, 0.28, 0.24)],
 	"foliage_size": 0.02,
-	"internode": 0.018,
+	# Pousses de l'année (étape 11) : 3 feuilles déjà formées dans le bourgeon, plus selon la vigueur (jusqu'à 8),
+	# entre-nœuds courts (5 à 15 mm), feuilles plus grandes vers le bout, croissance en zigzag (sympodiale).
+	"internode": 0.010,
 	"alpha": 1.6,
 	"apical": 0.53,
-	"max_per_flush": 4,
+	"max_per_flush": 8,
+	"preformed": 3,
+	"spur_len": 0.5,
+	"leaf_area": 0.5,
+	"sympodial": true,
 	"branch_angle": deg_to_rad(45.0),
 	"phyllotaxy": deg_to_rad(180.0),  # alterne distique
 	"w_light": 0.35,
@@ -21,9 +27,9 @@ const ELM := {
 	"shed_ratio": 0.04,
 	"bud_life": 52 * 8,
 	"backbud_chance": 0.6,
-	"capacity": 1500,
+	"capacity": 3000,
 	"max_sprouts": 4,
-	"flushes": {15: 1.0, 18: 1.0, 21: 0.8, 27: 0.5},
+	"flushes": {14: 1.0, 22: 0.7, 30: 0.4},  # printemps, début et fin d'été, de plus en plus faibles
 	"whorl": 0,          # bourgeon latéral à chaque nœud
 	"leaf_years": 0,     # caduc
 }
@@ -49,6 +55,10 @@ const PINE := {
 	"capacity": 3000,
 	"max_sprouts": 0,
 	"flushes": {16: 1.0, 27: 0.3},
+	"preformed": 0,
+	"spur_len": 0.8,
+	"leaf_area": 1.0,
+	"sympodial": false,
 	"whorl": 4,
 	"leaf_years": 3,
 }
