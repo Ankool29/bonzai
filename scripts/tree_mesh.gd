@@ -456,13 +456,15 @@ func _tri(p0: Vector3, p1: Vector3, p2: Vector3, nrm: Vector3, col: Color) -> vo
 ## Aiguilles de pin par paires le long de la pousse : chacune = deux triangles fins croisés,
 ## visibles sous tous les angles. Trois verts mélangés.
 func _needles(s: TreeSim.Seg, h: float, weak: bool, selected: bool, gone: float) -> void:
+	if s.needle <= 0.0:
+		return  # base nue de la chandelle, couronne de bourgeons
 	var greens := [Color(0.16, 0.36, 0.22), Color(0.22, 0.45, 0.27), Color(0.12, 0.3, 0.2)]
 	var d := (s.end - s.start).normalized()
 	var l := (s.end - s.start).length()
 	var a := _perp(d)
 	var b := d.cross(a)
 	var pairs := clampi(int(l / 0.002), 1, 10)
-	var nl := 0.03
+	var nl := 0.03 * s.needle
 	for k in pairs:
 		var p := s.start + d * l * (k + 0.5) / pairs
 		var ang := s.phase + k * 2.4
