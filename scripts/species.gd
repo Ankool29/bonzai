@@ -27,7 +27,7 @@ const ELM := {
 	"shed_ratio": 0.04,
 	"bud_life": 52 * 8,
 	"backbud_chance": 0.6,
-	"capacity": 3000,
+	"capacity": 6000,
 	"max_sprouts": 4,
 	"flushes": {14: 1.0, 22: 0.7, 30: 0.4},  # printemps, début et fin d'été, de plus en plus faibles
 	"leaf_shape": 0,
@@ -61,7 +61,7 @@ const PINE := {
 	"shed_ratio": 0.06,  # aime la lumière
 	"bud_life": 52 * 3,  # les bourgeons latents meurent avec les aiguilles
 	"backbud_chance": 0.5,  # bourgeons d'aiguilles, en saison (voir prune)
-	"capacity": 3000,
+	"capacity": 6000,
 	"max_sprouts": 0,
 	"flushes": {16: 1.0, 27: 0.3},
 	"preformed": 0,
@@ -108,7 +108,7 @@ const MAPLE := {
 	"shed_ratio": 0.04,
 	"bud_life": 52 * 4,
 	"backbud_chance": 0.5,
-	"capacity": 3000,
+	"capacity": 6000,
 	"max_sprouts": 2,
 	"flushes": {14: 1.0, 24: 0.5},
 	"whorl": 0,

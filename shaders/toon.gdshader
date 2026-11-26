@@ -59,8 +59,15 @@ void fragment() {
 		vec3 b = tone1;
 		if (pattern == 1 && big >= 3.0) {
 			b = k < 0.5 ? tone1 : (k < 0.8 ? tone2 : tone3);
-		} else if (pattern == 2 && k < 0.35) {
-			b = fissure;
+		} else if (pattern == 2) {
+			// pin : plaques (« carapace de tortue ») séparées de fissures, qui s'élargissent avec le diamètre ;
+			// jeune bois lisse
+			float w = 0.14 * clamp((big - 1.0) / 3.0, 0.0, 1.0);
+			float fr = fract(UV.y / 0.02 + h(vec2(cu, 0.0), 1.0));
+			b = k < 0.5 ? tone1 : tone2;
+			if (fract(UV.x * big) < w || fr < w * 0.8) {
+				b = fissure;
+			}
 		}
 		b = mix(b, young_color, young_k * 0.35);
 		b = mix(b, dry_color, dry_k * 0.7);

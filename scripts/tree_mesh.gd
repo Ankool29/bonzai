@@ -31,6 +31,7 @@ var nverts := PackedVector3Array()  # aiguilles
 var ncols := PackedColorArray()
 var cols := PackedColorArray()
 var idx := PackedInt32Array()
+var cont := PackedInt32Array()  # enfant qui continue l'axe (le plus gros), -1 au bout
 var lverts := PackedVector3Array()  # feuilles
 var lnorms := PackedVector3Array()
 var lcols := PackedColorArray()
@@ -100,11 +101,19 @@ func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 		elif weak[i] == 1 and not s.dry:
 			col = WEAK
 		seg_col[i] = col
+	# Hiérarchie des axes : à chaque nœud, l'enfant le plus gros continue l'axe (quel que soit son bourgeon),
+	# les autres ouvrent un axe d'ordre suivant. Après une coupe, la branche qui reprend prolonge l'axe.
+	cont.resize(n)
+	for i in n:
+		var s := sim.segs[i]
+		var mc := s.main_child if s.main_child >= 0 and seg_f[s.main_child] > 0.0 else -1
+		var lc := s.lat_child if s.lat_child >= 0 and seg_f[s.lat_child] > 0.0 else -1
+		cont[i] = lc if lc >= 0 and (mc < 0 or sim.segs[lc].radius > sim.segs[mc].radius) else mc
 	for i in n:
 		var s := sim.segs[i]
 		if seg_f[i] <= 0.0:
 			continue
-		if s.parent < 0 or sim.segs[s.parent].main_child != i:
+		if s.parent < 0 or cont[s.parent] != i:
 			_axis(i, seg_f, seg_col)
 		if leaves and not s.dry:
 			_foliage(s, weak[i] == 1, marked.has(i))
@@ -124,7 +133,7 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 		chain.append(k)
 		if seg_f[k] < 1.0:
 			break
-		k = sim.segs[k].main_child
+		k = cont[k]
 	# rayons aux anneaux : début de chaque segment puis pointe, lissés pour effacer les à-coups
 	var r := PackedFloat32Array()
 	for j in chain:
@@ -146,7 +155,7 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 		var par := sim.segs[sim.segs[i0].parent]
 		var pr := par.radius
 		var rc := r[0]
-		if rc > 0.5 * pr:
+		if rc > 0.7 * pr:
 			# Grosse branche : fourche en Y. Elle naît dans le parent, sur son axe, un peu sous le nœud,
 			# et s'en écarte doucement, comme deux troncs qui se séparent.
 			raw.insert(0, raw[0] - (par.end - par.start).normalized() * pr * 1.5)
@@ -154,9 +163,19 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 			r[1] = rc * 1.05
 			off = 1
 		else:
-			# Petite branche : départ enfoncé dans le parent, avec un léger col.
-			raw[0] -= (raw[1] - raw[0]).normalized() * pr * 0.5
-			r[0] = minf(rc * 1.2, pr * 0.9)
+			# Collet : la branche part de l'axe du porteur, renflée à sa sortie (plus dessous), puis reprend
+			# son diamètre ; les cernes du porteur et de la branche se chevauchent à la jonction.
+			var node := raw[0]
+			var d0 := (raw[1] - node).normalized()
+			raw.insert(1, node + d0 * pr * 0.9 - Vector3.UP * rc * 0.25)
+			r.insert(1, rc * 1.35)
+			r[0] = minf(rc * 1.8, pr * 0.9)
+			off = 1
+			var p2 := node + d0 * (pr + rc * 2.5)
+			if p2.distance_to(node) < raw[2].distance_to(node) * 0.8:
+				raw.insert(2, p2)
+				r.insert(2, rc * 1.08)
+				off = 2
 	# Continuité (règle des anneaux) : un anneau n'est jamais plus épais que celui qui le précède.
 	for m in range(1, r.size()):
 		r[m] = minf(r[m], r[m - 1])
@@ -167,7 +186,7 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 	var col := PackedColorArray([seg_col[i0]])
 	var pidx := PackedFloat32Array([0.0])  # position de l'anneau en indice de raw (pour retrouver son entre-nœud)
 	for m in range(1, raw.size()):
-		if m == raw.size() - 1 or raw[m].distance_to(pts[-1]) >= 2.5 * rad[rad.size() - 1]:
+		if m <= off or m == raw.size() - 1 or raw[m].distance_to(pts[-1]) >= 2.5 * rad[rad.size() - 1]:
 			pts.append(raw[m])
 			rad.append(r[m])
 			col.append(seg_col[chain[clampi(m - off, 0, chain.size() - 1)]])
@@ -197,12 +216,19 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 		rad = nr
 		col = ncl
 		pidx = npar
+	# Branches portées assez grosses : le bois de chacune descend dans l'axe et y forme une côte (cannelure).
+	var lat := []  # [nœud, indice dans raw, direction, rayon]
+	for m in chain.size():
+		var j := chain[m]
+		for c in [sim.segs[j].main_child, sim.segs[j].lat_child]:
+			if c >= 0 and c != cont[j] and seg_f[c] > 0.0 and sim.segs[c].radius > 0.15 * sim.segs[j].radius:
+				lat.append([sim.segs[j].end, float(m + 1 + off), (sim.segs[c].end - sim.segs[c].start).normalized(), sim.segs[c].radius])
 	var d := (pts[1] - pts[0]).normalized()
 	var a := _perp(d)
 	var v := 0.0
 	var axis_seed := i0 * 0.37  # irrégularités propres à chaque axe
 	var an := _ring_anim(pidx[0], chain, off, seg_f)
-	var prev := _ring(pts[0], d, a, rad[0], v, col[0], axis_seed, an[0], an[1])
+	var prev := _ring(pts[0], d, a, rad[0], v, col[0], axis_seed, an[0], an[1], NEVER, _flutes(lat, pts[0], pidx[0], d, rad[0]))
 	_cap(prev, pts[0] - d * rad[0] * 0.5, false)
 	for m in range(1, pts.size()):
 		d = (pts[m] - pts[m - 1]).normalized()
@@ -211,10 +237,27 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 		a = (a - d * a.dot(d)).normalized()  # transport parallèle : le tube ne se vrille pas
 		v += (pts[m] - pts[m - 1]).length()
 		an = _ring_anim(pidx[m], chain, off, seg_f)
-		var cur := _ring(pts[m], d, a, maxf(rad[m], 0.0004), v, col[m], axis_seed, an[0], an[1])
+		var cur := _ring(pts[m], d, a, maxf(rad[m], 0.0004), v, col[m], axis_seed, an[0], an[1], NEVER,
+				_flutes(lat, pts[m], pidx[m], d, rad[m]))
 		_join(prev, cur)
 		prev = cur
 	_cap(prev, pts[-1] + d * maxf(rad[rad.size() - 1], 0.0004) * 0.6, true)
+
+
+## Côtes d'un anneau : une par branche portée plus haut, qui s'efface en descendant (sur 12 rayons de branche).
+func _flutes(lat: Array, c: Vector3, p: float, d: Vector3, r: float) -> Array:
+	var out := []
+	for l in lat:
+		if l[1] <= p:
+			continue
+		var f: float = 1.0 - c.distance_to(l[0]) / (12.0 * l[3])
+		if f <= 0.0:
+			continue
+		var fd: Vector3 = l[2] - d * d.dot(l[2])
+		if fd.length() < 0.1:
+			continue
+		out.append([fd.normalized(), minf(0.6, 0.5 * l[3] / maxf(r, 0.000001)) * f])
+	return out
 
 
 ## Ferme un bout de tube (pointe, coupe) par un petit cône : plus de tube creux visible.
@@ -267,18 +310,32 @@ func _disc(c: Vector3, n: Vector3, r: float, col: Color) -> void:
 
 ## Racines de surface provisoires, à la taille du tronc (en attendant les racines simulées).
 func _nebari() -> void:
+	# Racines de surface : 4 à 7, qui rayonnent depuis l'évasement du tronc et s'enfoncent dans la terre ;
+	# plus longues chez l'érable. Elles suivent l'épaississement du tronc.
 	var r := sim.segs[0].radius
-	for k in 5:
-		var ang := k * TAU / 5.0 + 0.5 * sin(k * 7.1)
-		var dir := Vector3(cos(ang), 0, sin(ang))
-		var pts := [dir * r * 0.6 + Vector3.UP * 0.003, dir * (r * 1.8 + 0.008), dir * (r * 2.8 + 0.018) + Vector3.DOWN * 0.004]
-		var rads := [r * 0.5, r * 0.28, r * 0.06]
-		var a0 := Vector4(-1000.0, 1.0, _ratio(sim.segs[0]), -1.0)  # suit l'épaississement du tronc
-		var prev := _ring(pts[0], dir, Vector3.UP, rads[0], 0.0, OLD, 0.0, a0, Vector4.ZERO)
-		for q in range(1, 3):
-			var cur := _ring(pts[q], (pts[q] - pts[q - 1]).normalized(), Vector3.UP, rads[q], q * 0.012, OLD, 0.0, a0, Vector4.ZERO)
-			_join(prev, cur)
+	var n := 4 + int(absf(sin(sim.segs[0].lat_dir.x * 91.7 + sim.planted)) * 40.0) % 4
+	var l := r * (2.5 + 1.5 * (1.4 if sim.leaf_shape == 1 else 1.0))
+	var a0 := Vector4(-1000.0, 1.0, _ratio(sim.segs[0]), -1.0)
+	for k in n:
+		var ang := k * TAU / n + 0.5 * sin(k * 7.1)
+		var prev := -1
+		var pc := Vector3.ZERO
+		var d := Vector3.ZERO
+		for q in 7:
+			var t := q / 6.0
+			var a2 := ang + 0.25 * sin(k * 3.3 + t * 4.0)
+			var dr := Vector3(cos(a2), 0.0, sin(a2))
+			var c := dr * (r * 0.7 + l * t) + Vector3.UP * (r * 0.5 * pow(1.0 - t, 2.0) - 0.003 * t)
+			var rr := r * 0.55 * pow(1.0 - t, 0.9) + 0.0008
+			d = dr if q == 0 else (c - pc).normalized()
+			var cur := _ring(c, d, Vector3.UP, rr, t * 0.02, OLD, k * 1.3, a0, Vector4.ZERO)
+			if prev < 0:
+				_cap(cur, c - d * rr * 0.5, false)
+			else:
+				_join(prev, cur)
 			prev = cur
+			pc = c
+		_cap(prev, pc + d * 0.002, true)
 
 
 func _perp(d: Vector3) -> Vector3:
@@ -293,11 +350,15 @@ func _perp(d: Vector3) -> Vector3:
 ## a0 = (naissance, durée d'allongement, épaisseur début/fin, séchage), a2 = (départ de la pousse, part de
 ## l'entre-nœud) ; voir shaders/anim.gdshaderinc. a2 nul : l'anneau suit son propre centre.
 func _ring(c: Vector3, d: Vector3, a: Vector3, r: float, v: float, col: Color, axis_seed: float,
-		a0: Vector4, a2: Vector4, vanish := NEVER) -> int:
+		a0: Vector4, a2: Vector4, vanish := NEVER, flutes := []) -> int:
 	if a2 == Vector4.ZERO:
 		a2 = Vector4(c.x, c.y, c.z, 0.0)
 	a = (a - d * a.dot(d)).normalized()
 	var b := d.cross(a)
+	# Bois de réaction : sur un bois penché, le cœur est décentré ; plus de bois dessous chez le pin,
+	# dessus chez les feuillus.
+	var up := Vector3.UP - d * d.y
+	var lean := up * r * 0.12 * (-1.0 if sim.leaf_years > 0 else 1.0) if up.length() > 0.01 else Vector3.ZERO
 	var cells := maxf(3.0, roundf(TAU * r / 0.0025))
 	var base := verts.size()
 	for k in SIDES + 1:
@@ -310,7 +371,9 @@ func _ring(c: Vector3, d: Vector3, a: Vector3, r: float, v: float, col: Color, a
 				+ 0.3 * sin(3.0 * ang + axis_seed * 3.1 - v * 55.0)
 				+ 0.15 * sin(5.0 * ang + axis_seed * 1.7 + v * 90.0)
 				+ 0.25 * sin(v * 22.0 + axis_seed * 5.0))  # renflements le long du bois
-		verts.append(c + nrm * r * bump)
+		for f in flutes:
+			bump += f[1] * pow(maxf(0.0, nrm.dot(f[0])), 3.0)
+		verts.append(c + lean + nrm * r * bump)
 		norms.append(nrm)
 		uvs.append(Vector2(float(k) / SIDES, v))
 		uv2s.append(Vector2(cells, 0))
