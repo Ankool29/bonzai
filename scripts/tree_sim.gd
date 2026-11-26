@@ -34,6 +34,8 @@ class Seg:
 	var release := 1.0       # bonus des bourgeons de ce nœud après une coupe (levée de dominance)
 	var relay := false       # bourgeon terminal avorté : la pousse repartira du dernier bourgeon latéral
 	var leaf_k := 1.0        # place dans sa pousse (0 : base, 1 : bout) ; les feuilles grandissent vers le bout
+	var needle := 1.0        # pin : longueur relative des aiguilles (0 : base nue de la chandelle, couronne)
+	var forced := false      # pin : bourgeon né d'une coupe de chandelle, part même s'il est faible
 	# recalculés à chaque poussée
 	var light := 0.0
 	var count := 0
@@ -76,6 +78,8 @@ var whorl := 0                # >0 : bourgeons seulement en couronne au bout de 
 var leaf_years := 0           # 0 : caduc ; sinon durée de vie des aiguilles (le réveil n'a lieu que là où il y en a)
 ## Semaine de l'année -> force de la poussée (printemps puis petite poussée d'été).
 var flushes := {15: 1.0, 18: 1.0, 21: 0.8, 27: 0.5}
+var flush_now := 1.0          # force de la poussée en cours (< 1 : poussée d'été)
+var extra_flush := -1         # semaine de la poussée provoquée par une coupe de chandelles (pin)
 const GROW_WEEKS := 3.0       # durée d'allongement d'une pousse (écart entre deux poussées)
 const DIEBACK_WEEK := 35      # fin d'été : bilan de lumière des branches
 
@@ -125,6 +129,8 @@ func step_week() -> void:
 	var w := week % 52
 	if flushes.has(w):
 		_flush(flushes[w])
+	if week == extra_flush:
+		_flush(0.6)
 	if w == DIEBACK_WEEK:
 		_dieback()
 	if w == 0:
@@ -141,6 +147,13 @@ func prune(i: int, concave := false) -> bool:
 		return false
 	var j := segs[i].parent
 	var cut := segs[i]
+	var y0 := floorf(week / 52.0) * 52.0
+	# Pin : chandelle de l'année coupée à sa base = mekiri. Couronne de 0 à 4 entre-nœuds (n + 1 bourgeons)
+	# selon la vigueur de la chandelle retirée ; elle part 2 à 4 semaines plus tard si on coupe de fin mai
+	# à début juillet, sinon au printemps suivant.
+	var buds := -1
+	if whorl > 0 and cut.born >= y0 and segs[j].born < y0:
+		buds = clampi(int(subtree(i).size() * 0.5 + rng.randf() * 2.0) - 1, 0, 4)
 	if cut.radius > WOUND_MIN and not cut.dry:
 		var w := segs[j]
 		w.wound_full = maxf(w.wound_full, cut.radius)
@@ -148,7 +161,20 @@ func prune(i: int, concave := false) -> bool:
 		w.wound_concave = concave
 		w.wound_dir = (cut.end - cut.start).normalized()
 		w.wound_side = w.main_child != i
+	var side := segs[j].main_child != i
 	_kill(i)
+	if buds > 0:
+		var d := (cut.end - cut.start).normalized()
+		var first := _crown(j, segs[j].end, d, segs[j].phase, buds, week)
+		if side:
+			segs[j].lat_child = first
+		else:
+			segs[j].main_child = first
+		for k in range(first, segs.size()):
+			segs[k].forced = true
+		var wk := week % 52
+		if wk >= 20 and wk <= 28:
+			extra_flush = week + 2 + rng.randi() % 3
 	# La coupe lève la dominance apicale : les bourgeons juste en dessous (dormants ou adventifs)
 	# se réveillent et prennent de la vigueur l'année suivante.
 	for k in backbud_nodes:
@@ -156,7 +182,17 @@ func prune(i: int, concave := false) -> bool:
 			break
 		var p := segs[j]
 		var leafy := leaf_years == 0 or week - p.born < leaf_years * 52
-		if leafy and not p.dry and not p.lat_bud and p.lat_child < 0 and rng.randf() < backbud_chance:
+		var chance := backbud_chance
+		if whorl > 0:
+			# Pin : bourgeons d'aiguilles, réveillés surtout en pleine saison ; sur le vieux bois, rarement,
+			# et seulement sur un jeune arbre.
+			var wk := week % 52
+			if leafy and p.needle > 0.0:
+				chance = backbud_chance if wk >= 18 and wk <= 30 else backbud_chance * 0.2
+			else:
+				chance = 0.03 if week < 52 * 10 else 0.0
+			leafy = true
+		if leafy and not p.dry and not p.lat_bud and p.lat_child < 0 and rng.randf() < chance:
 			p.phase = rng.randf() * TAU
 			_set_lateral(p, (p.end - p.start).normalized())
 		if k < release_nodes:
@@ -190,6 +226,7 @@ func height() -> float:
 # --- Cycle de croissance ---
 
 func _flush(strength: float) -> void:
+	flush_now = strength
 	_compute_shadow()
 	_basipetal()
 	if _sprouts():
@@ -202,6 +239,7 @@ func _flush(strength: float) -> void:
 func _end_of_year() -> void:
 	for s in segs:
 		s.release = 1.0
+		s.forced = false
 		if sympodial and s.term_bud and s.lat_bud and not s.dry:
 			s.lat_bud = false
 			s.relay = true
@@ -336,14 +374,16 @@ func _grow() -> void:
 	for i in n0:
 		var s := segs[i]
 		# Démarre avec une probabilité égale à sa vigueur (sous 1 : rameau court).
-		if s.term_bud and s.v_term + rng.randf() >= 1.0:
+		# Pin, poussée d'été : seuls les bourgeons très vigoureux (ou nés d'une coupe de chandelle) partent.
+		var summer := whorl > 0 and flush_now < 1.0 and not s.forced
+		if s.term_bud and (s.v_term >= 1.0 if summer else s.v_term + rng.randf() >= 1.0):
 			var d := s.end - s.start
 			if s.relay:  # repart du bourgeon latéral : l'axe fait un coude
 				d = d.normalized() + s.lat_dir.normalized()
 			s.term_bud = false
 			s.relay = false
 			s.main_child = _shoot(i, d, s.v_term)
-		if s.lat_bud and s.v_lat + rng.randf() >= 1.0:
+		if s.lat_bud and (s.v_lat >= 1.0 if summer else s.v_lat + rng.randf() >= 1.0):
 			s.lat_bud = false
 			s.lat_child = _shoot(i, s.lat_dir, s.v_lat)
 		s.v_term = 0.0
@@ -364,6 +404,8 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 	var d := dir.normalized()
 	var p := segs[parent_i].end
 	var phase := segs[parent_i].phase
+	# pin : aiguilles plus longues sur une pousse forte, deux fois plus courtes l'été
+	var needle_len := clampf(0.6 + 0.25 * v, 0.6, 1.4) * (1.0 if flush_now >= 1.0 else 0.5)
 	for k in n:
 		var rnd := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1))
 		d = (d * w_dir + _light_dir(p) * w_light + Vector3.UP * w_up + rnd * jitter).normalized()
@@ -387,28 +429,43 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 		else:
 			segs[prev].main_child = idx
 		if whorl > 0:
-			s.lat_bud = false  # pin : pas de bourgeon le long de la chandelle
+			s.lat_bud = false  # pin : bourgeons d'aiguilles latents, réveillés seulement par une coupe
+			s.needle = 0.0 if k < n / 3 else needle_len  # base de la chandelle nue (écailles)
 		prev = idx
 		p = s.end
 	if whorl > 0 and not spur:
-		# Couronne de bourgeons au bout de la pousse : entre-nœuds minuscules en spirale.
-		var t0 := segs[prev].born + segs[prev].grow_time
-		for k in whorl:
-			var s := Seg.new()
-			s.parent = prev
-			s.start = p
-			s.end = p + d * internode * 0.06
-			s.radius = tip_radius
-			s.grow_time = 0.2
-			s.born = t0
-			phase += deg_to_rad(137.5)
-			s.phase = phase
-			_set_lateral(s, d)
-			s.lat_q = rng.randf_range(0.6, 1.4)
-			segs.append(s)
+		# couronne : 2 ou 3 bourgeons sur une pousse moyenne, jusqu'à whorl + 1 sur une forte
+		var nw := clampi(int(1.5 * v + rng.randf()), 0, whorl)
+		if nw > 0:
+			var c := _crown(prev, p, d, phase, nw, segs[prev].born + segs[prev].grow_time)
+			segs[prev].main_child = c
+			return first
+	segs[prev].term_bud = true
+	return first
+
+
+## Couronne de bourgeons (pin) au bout de prev : entre-nœuds minuscules en spirale, chacun avec un bourgeon
+## latéral, le dernier avec un bourgeon terminal. Renvoie le premier ; à rattacher par l'appelant.
+func _crown(prev: int, p: Vector3, d: Vector3, phase: float, count: int, t0: float) -> int:
+	var first := segs.size()
+	for k in count:
+		var s := Seg.new()
+		s.parent = prev
+		s.start = p
+		s.end = p + d * internode * 0.06
+		s.radius = tip_radius
+		s.grow_time = 0.2
+		s.born = t0
+		s.needle = 0.0
+		phase += deg_to_rad(137.5)
+		s.phase = phase
+		_set_lateral(s, d)
+		s.lat_q = rng.randf_range(0.6, 1.4)
+		segs.append(s)
+		if k > 0:
 			segs[prev].main_child = segs.size() - 1
-			prev = segs.size() - 1
-			p = s.end
+		prev = segs.size() - 1
+		p = s.end
 	segs[prev].term_bud = true
 	return first
 

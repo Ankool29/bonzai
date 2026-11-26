@@ -38,6 +38,10 @@ const ELM := {
 ## forte dominance apicale, aiguilles 3 ans, presque pas de rebourgeonnage sur le vieux bois.
 const PINE := {
 	"name": "Pin noir du Japon",
+	# Doc (étape 12) : Gymnosperm Database, Conifer Society, Wikipédia, Annals of Botany 2004 (bourgeon du pin),
+	# Bonsai Tonight (mekiri, types de bourgeons, rebourgeonnage), Björn Bjorholm. Chandelle préformée : base
+	# d'écailles nue, paires d'aiguilles (7-12 cm, 3-4 ans), couronne de bourgeons au bout ; poussée d'été si
+	# très vigoureux ; mekiri : 0 à 5 bourgeons 2-4 semaines après, pousses et aiguilles plus courtes.
 	# plaques gris foncé, fissures profondes brun-rouge
 	"bark_colors": [Color(0.38, 0.33, 0.31), Color(0.45, 0.4, 0.37), Color(0.4, 0.34, 0.3), Color(0.36, 0.18, 0.12)],
 	"internode": 0.02,
@@ -51,7 +55,7 @@ const PINE := {
 	"jitter": 0.05,
 	"shed_ratio": 0.06,  # aime la lumière
 	"bud_life": 52 * 3,  # les bourgeons latents meurent avec les aiguilles
-	"backbud_chance": 0.1,
+	"backbud_chance": 0.5,  # bourgeons d'aiguilles, en saison (voir prune)
 	"capacity": 3000,
 	"max_sprouts": 0,
 	"flushes": {16: 1.0, 27: 0.3},
