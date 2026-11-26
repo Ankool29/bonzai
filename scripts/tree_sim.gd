@@ -52,6 +52,8 @@ var foliage_size := 0.02     # longueur d'une feuille avec son pétiole (m)
 var leaf_shape := 0           # 0 : feuille simple (orme), 1 : palmée (érable)
 var young_color := Color(0.55, 0.47, 0.38)  # rameau de l'année
 var autumn_color := Color(0.82, 0.6, 0.2)
+var bud_color := Color(0.42, 0.28, 0.18)
+var bud_size := 0.0025        # longueur d'un bourgeon latéral (m)
 var internode := 0.018
 var alpha := 1.6              # vigueur totale = alpha × lumière captée
 var apical := 0.53            # part de vigueur donnée à l'axe principal (λ)
