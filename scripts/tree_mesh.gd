@@ -120,11 +120,11 @@ func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 			_axis(i, seg_f, seg_col)
 		if leaves and not s.dry:
 			_foliage(s, weak[i] == 1, marked.has(i))
-			# Rameaux courts : au printemps, un bourgeon latéral dormant du bois de 1-2 ans débourre en rosette
+			# Rameaux courts : au printemps, un bourgeon latéral dormant du bois de 1 à 5 ans débourre en rosette
 			# de feuilles sans s'allonger (2 feuilles, 1 pour les bourgeons opposés). Purement visuel.
 			if sim.leaf_years == 0 and weak[i] == 0 and s.lat_bud and s.lat_child < 0:
 				var age := year_now - floorf(s.born / 52.0)
-				if age >= 1.0 and age <= 2.0 and spring <= t:
+				if age >= 1.0 and age <= 5.0 and spring <= t:
 					_foliage(s, false, marked.has(i), 0.6, 0.8, spring)
 					if not sim.opposite:
 						_foliage(s, false, marked.has(i), -0.6, 0.55, spring)
