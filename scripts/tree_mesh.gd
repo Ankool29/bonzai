@@ -428,7 +428,7 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool) -> void:
 func _palmate(node: Vector3, dir: Vector3, side: Vector3, nrm: Vector3, l: float, lobes: int, col: Color, ink: Color, vein: Color) -> void:
 	var r := l * 0.32                      # rayon du limbe
 	var b0 := node + dir * l * 0.36        # base du limbe, au bout du pétiole
-	var spread := deg_to_rad(105.0)        # angle du lobe le plus latéral
+	var spread := deg_to_rad(105.0 if lobes == 7 else 95.0)  # angle du lobe le plus latéral
 	var gap := spread * 2.0 / (lobes - 1)  # angle entre deux lobes
 	var pt := func(ang: float, rad: float) -> Vector3: return b0 + (dir * cos(ang) + side * sin(ang)) * rad
 	var cont: Array[Vector3] = []
@@ -436,17 +436,17 @@ func _palmate(node: Vector3, dir: Vector3, side: Vector3, nrm: Vector3, l: float
 	var tips: Array[Vector3] = []
 	for i in lobes:
 		var a := -spread + gap * i
-		var len_i := r * (1.0 - 0.3 * absf(a) / spread)  # lobes latéraux plus courts
+		var len_i := r * (1.0 - 0.35 * absf(a) / spread)  # lobes latéraux plus courts
 		# bord gauche de la base vers la pointe, puis bord droit vers le sinus suivant ; dents une fois sur deux
 		for k in 7:
 			var t := k / 6.0
-			cont.append(pt.call(a - gap * 0.42 * pow(1.0 - t, 0.7), lerpf(r * 0.38, len_i, t) * (1.0 + 0.05 * (k % 2))))
+			cont.append(pt.call(a - _lobe_w(t) * gap, lerpf(r * 0.3, len_i, t) * (1.0 + 0.05 * (k % 2))))
 		tips.append(pt.call(a, len_i))
 		for k in range(5, -1, -1):
 			var t := k / 6.0
-			cont.append(pt.call(a + gap * 0.42 * pow(1.0 - t, 0.7), lerpf(r * 0.38, len_i, t) * (1.0 + 0.05 * (k % 2))))
+			cont.append(pt.call(a + _lobe_w(t) * gap, lerpf(r * 0.3, len_i, t) * (1.0 + 0.05 * (k % 2))))
 		if i < lobes - 1:
-			cont.append(pt.call(a + gap * 0.5, r * 0.32))  # fond du sinus
+			cont.append(pt.call(a + gap * 0.5, r * 0.25))  # fond du sinus
 	cont.append(pt.call(spread + gap * 0.5, r * 0.12))
 	for k in cont.size():
 		var p0 := cont[k]
@@ -459,6 +459,11 @@ func _palmate(node: Vector3, dir: Vector3, side: Vector3, nrm: Vector3, l: float
 	_line(node, b0, 0.0003, nrm, ink)
 	for t in tips:
 		_line(b0, b0 + (t - b0) * 0.9, 0.00012, nrm, vein)
+
+
+## Demi-largeur angulaire d'un lobe d'érable (en fraction de l'écart entre lobes) : plus large au milieu, pointe aiguë.
+func _lobe_w(t: float) -> float:
+	return 0.42 * pow(1.0 - t, 1.1) * (1.0 + 1.5 * t)
 
 
 ## Point du bord de la feuille : x de 0 (base) à 1 (pointe), bord légèrement denté.
