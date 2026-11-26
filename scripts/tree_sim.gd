@@ -105,21 +105,63 @@ var reserve := 0.0            # vigueur que les racines peuvent fournir (suit la
 var layout := 0               # change quand des segments sont retirés (les indices changent)
 var fallen: Array = []        # rameaux morts tombés pendant la période : [début, fin, rayon, séchage, chute]
 var rng := RandomNumberGenerator.new()
+var planted := 10             # semaine de mise en pot
 
 
-func reset(seed_value: int = 1, species: Dictionary = Species.ELM) -> void:
+## start_week : date du jardin (10 = début mars de l'année 1).
+func reset(seed_value: int = 1, species: Dictionary = Species.ELM, start_week := 10) -> void:
 	for k in species:
 		set(k, species[k])
 	rng.seed = seed_value
 	segs.clear()
 	reserve = 0.0
-	week = 10  # début mars, année 1
+	week = start_week
+	planted = start_week
 	var s := Seg.new()
+	s.born = start_week
 	s.end = Vector3(0, internode * 2.0, 0)
 	s.term_bud = true
 	s.radius = tip_radius
 	_set_lateral(s, Vector3.UP)
 	segs.append(s)
+
+
+## Sauvegarde : toutes les variables de l'arbre (fiche espèce comprise) et des segments, colonne par colonne,
+## plus l'état du hasard pour que la suite de la pousse soit la même.
+func to_data() -> Dictionary:
+	var d := {}
+	for p in get_property_list():
+		if p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE and p.name != "segs" and p.name != "rng" and p.name != "fallen":
+			d[p.name] = get(p.name)
+	d["rng_seed"] = rng.seed
+	d["rng_state"] = rng.state
+	var cols := {}
+	if not segs.is_empty():
+		for p in segs[0].get_property_list():
+			if p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE:
+				var col := []
+				for sg in segs:
+					col.append(sg.get(p.name))
+				cols[p.name] = col
+	d["segs"] = cols
+	d["count"] = segs.size()
+	return d
+
+
+func from_data(d: Dictionary) -> void:
+	for k in d:
+		if k != "segs" and k != "count" and k != "rng_seed" and k != "rng_state":
+			set(k, d[k])
+	rng.seed = d["rng_seed"]
+	rng.state = d["rng_state"]
+	segs.clear()
+	fallen.clear()
+	var cols: Dictionary = d["segs"]
+	for i in int(d["count"]):
+		var sg := Seg.new()
+		for k in cols:
+			sg.set(k, cols[k][i])
+		segs.append(sg)
 
 
 ## Début d'une période animée : on note les épaisseurs et on vide la liste des rameaux tombés.
