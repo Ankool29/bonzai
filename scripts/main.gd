@@ -31,6 +31,7 @@ var layout := 0
 var task := -1        # calcul de la période en cours (WorkerThreadPool), -1 si aucun
 var built := []       # résultat du calcul : maillages de fin de période
 var calc_ms := 0      # durée du dernier calcul
+var last_touch := 0   # ms du dernier toucher (cadence d'affichage)
 var anim_t0 := 0.0    # période animée (semaines)
 var anim_t1 := 0.0
 var anim_now := 0.0
@@ -71,7 +72,7 @@ func _ready() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-55, 35, 0)
 	sun.light_energy = 1.1
-	sun.shadow_enabled = true
+	sun.shadow_enabled = false  # pas d'ombres pendant le travail (chauffe) ; elles serviront à l'exposition
 	sun.directional_shadow_max_distance = 3.0  # ombres nettes sur la petite scène
 	world.add_child(sun)
 	world.add_child(wood_mi)
@@ -341,6 +342,9 @@ func _advance(weeks: int) -> void:
 
 
 func _process(delta: float) -> void:
+	# 30 images/s au repos, 60 quand on touche l'écran ou que l'arbre bouge (l'écran du téléphone va jusqu'à 120)
+	var active := playing or gliding or task >= 0 or Time.get_ticks_msec() - last_touch < 2000
+	Engine.max_fps = 60 if active else 30
 	if msg.visible and Time.get_ticks_msec() > msg_until:
 		msg.visible = false
 	if gliding:  # glissement doux vers le point choisi par double-tap
@@ -488,6 +492,11 @@ func _info(time: float) -> void:
 func _update_cam() -> void:
 	cam.position = target + Vector3(cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw)) * dist
 	cam.look_at(target)
+
+
+func _input(ev: InputEvent) -> void:
+	if ev is InputEventScreenTouch or ev is InputEventScreenDrag:
+		last_touch = Time.get_ticks_msec()
 
 
 func _unhandled_input(ev: InputEvent) -> void:

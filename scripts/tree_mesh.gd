@@ -7,6 +7,7 @@ extends RefCounted
 ## - pin : aiguilles par paires dessinées en géométrie (deux triangles fins croisés).
 
 const SIDES := 12
+var sides := SIDES  # faces des anneaux en cours : 6 pour les rameaux fins et les bourgeons
 const LEAF_PTS := 14                       # points du bord d'un côté de la feuille
 const SELECTED := Color(0.95, 0.2, 0.12, 0.7)
 const WEAK := Color(0.8, 0.7, 0.35, 0.3)     # branche qui s'affaiblit à l'ombre
@@ -139,6 +140,7 @@ func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 
 ## Un axe : la suite des prolongements depuis i0, en un seul tube à l'épaisseur lissée.
 func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> void:
+	sides = 6 if sim.segs[i0].radius < 0.00075 else SIDES  # rameau de moins de 1,5 mm : 6 faces suffisent
 	var chain: Array[int] = []
 	var k := i0
 	while k >= 0 and seg_f[k] > 0.0:
@@ -274,6 +276,7 @@ func _flutes(lat: Array, c: Vector3, p: float, d: Vector3, r: float) -> Array:
 
 ## Bourgeons vivants du bois de moins de 3 ans : latéral à l'aisselle (plaqué contre le rameau), terminal au bout.
 func _buds(s: TreeSim.Seg) -> void:
+	sides = 6
 	var axis := (s.end - s.start).normalized()
 	var born := s.born + s.grow_time
 	var small := 0.7 if sim.whorl > 0 else 1.0  # pin : bourgeons de la couronne plus petits que le terminal
@@ -308,7 +311,7 @@ func _cap(ring: int, tip: Vector3, flip: bool) -> void:
 		wc0.append(wc0[ring * 4 + e])
 		wc1.append(wc1[ring * 4 + e])
 		wc2.append(wc2[ring * 4 + e])
-	for k in SIDES:
+	for k in sides:
 		idx.append(ring + k + (1 if flip else 0))
 		idx.append(ring + k + (0 if flip else 1))
 		idx.append(t0)
@@ -327,9 +330,9 @@ func _disc(c: Vector3, n: Vector3, r: float, col: Color) -> void:
 	var a := _perp(n)
 	var b := n.cross(a)
 	var base := verts.size()
-	for k in SIDES + 1:
-		var ang := TAU * k / SIDES
-		verts.append(c + (a * cos(ang) + b * sin(ang)) * r if k < SIDES else c)
+	for k in sides + 1:
+		var ang := TAU * k / sides
+		verts.append(c + (a * cos(ang) + b * sin(ang)) * r if k < sides else c)
 		norms.append(n)
 		uvs.append(Vector2.ZERO)
 		uv2s.append(Vector2(3, 0))
@@ -337,14 +340,15 @@ func _disc(c: Vector3, n: Vector3, r: float, col: Color) -> void:
 		wc0.append_array([-1000.0, 1.0, 1.0, -1.0])
 		wc1.append_array([c.x, c.y, c.z, NEVER])
 		wc2.append_array([c.x, c.y, c.z, 0.0])
-	for k in SIDES:
-		idx.append(base + SIDES)
-		idx.append(base + (k + 1) % SIDES)
+	for k in sides:
+		idx.append(base + sides)
+		idx.append(base + (k + 1) % sides)
 		idx.append(base + k)
 
 
 ## Racines de surface provisoires, à la taille du tronc (en attendant les racines simulées).
 func _nebari() -> void:
+	sides = SIDES
 	# Racines de surface : 4 à 7, qui rayonnent depuis l'évasement du tronc et s'enfoncent dans la terre ;
 	# plus longues chez l'érable. Elles suivent l'épaississement du tronc.
 	var r := sim.segs[0].radius
@@ -381,7 +385,7 @@ func _perp(d: Vector3) -> Vector3:
 	return a.normalized()
 
 
-## Anneau de SIDES+1 sommets (le dernier double le premier pour fermer le motif d'écorce).
+## Anneau de sides+1 sommets (le dernier double le premier pour fermer le motif d'écorce).
 ## UV = (fraction du tour, longueur en m), UV2.x = nombre de cellules d'écorce (~2,5 mm) sur le tour.
 ## a0 = (naissance, durée d'allongement, épaisseur début/fin, séchage), a2 = (départ de la pousse, part de
 ## l'entre-nœud) ; voir shaders/anim.gdshaderinc. a2 nul : l'anneau suit son propre centre.
@@ -397,8 +401,8 @@ func _ring(c: Vector3, d: Vector3, a: Vector3, r: float, v: float, col: Color, a
 	var lean := up * r * 0.12 * (-1.0 if sim.leaf_years > 0 else 1.0) if up.length() > 0.01 else Vector3.ZERO
 	var cells := maxf(3.0, roundf(TAU * r / 0.0025))
 	var base := verts.size()
-	for k in SIDES + 1:
-		var ang := TAU * k / SIDES
+	for k in sides + 1:
+		var ang := TAU * k / sides
 		var nrm := a * cos(ang) + b * sin(ang)
 		# Anneaux irréguliers (bosses, méplats, renflements) qui varient doucement le long du bois ;
 		# plus marqués sur le bois épais, nuls sur les rameaux fins.
@@ -411,7 +415,7 @@ func _ring(c: Vector3, d: Vector3, a: Vector3, r: float, v: float, col: Color, a
 			bump += f[1] * pow(maxf(0.0, nrm.dot(f[0])), 3.0)
 		verts.append(c + lean + nrm * r * bump)
 		norms.append(nrm)
-		uvs.append(Vector2(float(k) / SIDES, v))
+		uvs.append(Vector2(float(k) / sides, v))
 		uv2s.append(Vector2(cells, 0))
 		cols.append(col)
 		wc0.append_array([a0.x, a0.y, a0.z, a0.w])
@@ -442,6 +446,7 @@ func _ratio(s: TreeSim.Seg) -> float:
 
 ## Rameaux morts tombés pendant la période : dessinés jusqu'à leur chute.
 func _fallen() -> void:
+	sides = 6  # brindilles tombées
 	for fl in sim.fallen:
 		var st: Vector3 = fl[0]
 		var en: Vector3 = fl[1]
@@ -454,7 +459,7 @@ func _fallen() -> void:
 
 
 func _join(r0: int, r1: int) -> void:
-	for k in SIDES:
+	for k in sides:
 		for q in [r0 + k, r1 + k, r0 + k + 1, r0 + k + 1, r1 + k, r1 + k + 1]:
 			idx.append(q)
 
