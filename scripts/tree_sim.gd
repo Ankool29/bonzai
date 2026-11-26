@@ -49,6 +49,9 @@ class Seg:
 var name := "Orme de Chine"
 var bark_colors := [Color(0.55, 0.52, 0.47), Color(0.63, 0.6, 0.55), Color(0.62, 0.45, 0.32), Color(0.33, 0.28, 0.24)]
 var foliage_size := 0.02     # longueur d'une feuille avec son pétiole (m)
+var leaf_shape := 0           # 0 : feuille simple (orme), 1 : palmée (érable)
+var young_color := Color(0.55, 0.47, 0.38)  # rameau de l'année
+var autumn_color := Color(0.82, 0.6, 0.2)
 var internode := 0.018
 var alpha := 1.6              # vigueur totale = alpha × lumière captée
 var apical := 0.53            # part de vigueur donnée à l'axe principal (λ)
@@ -57,6 +60,8 @@ var preformed := 0            # feuilles déjà formées dans le bourgeon (0 : e
 var spur_len := 0.8           # longueur relative des entre-nœuds d'un rameau court
 var leaf_area := 1.0          # surface de feuille par nœud (ombre portée, cerne, seuil de dépérissement)
 var sympodial := false        # le bourgeon terminal avorte en hiver : croissance en zigzag
+var opposite := false         # bourgeons par paires opposées (érable) ; phyllotaxy = rotation d'une paire à l'autre
+var fork := false             # le bout du rameau avorte en hiver : repart des deux bourgeons de la dernière paire
 var branch_angle := deg_to_rad(45.0)
 var phyllotaxy := deg_to_rad(180.0)  # alterne distique
 var w_dir := 1.0
@@ -240,6 +245,8 @@ func _end_of_year() -> void:
 	for s in segs:
 		s.release = 1.0
 		s.forced = false
+		if fork and s.term_bud and s.lat_bud and not s.dry:
+			s.term_bud = false
 		if sympodial and s.term_bud and s.lat_bud and not s.dry:
 			s.lat_bud = false
 			s.relay = true
@@ -414,6 +421,8 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 		s.start = p
 		s.leaf_k = float(k + 1) / n
 		var profile := 1.0 if spur else 0.85 + 0.35 * sin(PI * (k + 0.5) / n)
+		if opposite and not spur:
+			profile = 0.35 if k == 0 else 0.8 + 0.5 * float(k) / n  # première paire serrée, puis de plus en plus long
 		s.end = p + d * internode * len_v * profile * rng.randf_range(0.8, 1.2)
 		s.radius = tip_radius
 		s.grow_time = GROW_WEEKS / n
@@ -433,6 +442,23 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 			s.needle = 0.0 if k < n / 3 else needle_len  # base de la chandelle nue (écailles)
 		prev = idx
 		p = s.end
+		if opposite:
+			# second bourgeon de la paire : entre-nœud quasi nul, bourgeon du côté opposé
+			var t := Seg.new()
+			t.parent = prev
+			t.start = p
+			t.end = p + d * internode * 0.02
+			t.radius = tip_radius
+			t.grow_time = s.grow_time
+			t.born = s.born
+			t.leaf_k = s.leaf_k
+			t.phase = s.phase + PI
+			_set_lateral(t, d)
+			t.lat_q = s.lat_q * rng.randf_range(0.8, 1.2)
+			segs.append(t)
+			segs[prev].main_child = segs.size() - 1
+			prev = segs.size() - 1
+			p = t.end
 	if whorl > 0 and not spur:
 		# couronne : 2 ou 3 bourgeons sur une pousse moyenne, jusqu'à whorl + 1 sur une forte
 		var nw := clampi(int(1.5 * v + rng.randf()), 0, whorl)
