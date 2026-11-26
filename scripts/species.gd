@@ -30,6 +30,11 @@ const ELM := {
 	"capacity": 3000,
 	"max_sprouts": 4,
 	"flushes": {14: 1.0, 22: 0.7, 30: 0.4},  # printemps, début et fin d'été, de plus en plus faibles
+	"leaf_shape": 0,
+	"young_color": Color(0.55, 0.47, 0.38),
+	"autumn_color": Color(0.82, 0.6, 0.2),
+	"opposite": false,
+	"fork": false,
 	"whorl": 0,          # bourgeon latéral à chaque nœud
 	"leaf_years": 0,     # caduc
 }
@@ -63,6 +68,49 @@ const PINE := {
 	"spur_len": 0.8,
 	"leaf_area": 1.0,
 	"sympodial": false,
+	"leaf_shape": 0,
+	"young_color": Color(0.55, 0.47, 0.38),
+	"autumn_color": Color(0.82, 0.6, 0.2),
+	"opposite": false,
+	"fork": false,
 	"whorl": 4,
 	"leaf_years": 3,
+}
+
+
+const MAPLE := {
+	"name": "Érable du Japon",
+	# Doc (étape 13) : Virginia Tech Dendrology, UConn Plant Database, NC State Extension, Utah State Extension,
+	# bonsai4me, Bonsai Tonight (pinçage, entre-nœuds, effeuillage), forums UBC et Houzz (paires alternées).
+	# Feuilles et bourgeons opposés, paires tournées d'un quart de tour ; pas de vrai bourgeon terminal :
+	# fourche au bout des rameaux ; pousse de printemps : une paire serrée puis de longs entre-nœuds ;
+	# limbe palmé de 5 à 7 lobes dentés, long pétiole ; jeunes rameaux verts à rouges, écorce lisse gris clair.
+	"bark_colors": [Color(0.58, 0.58, 0.55), Color(0.62, 0.62, 0.58), Color(0.55, 0.56, 0.5), Color(0.42, 0.42, 0.4)],
+	"foliage_size": 0.035,
+	"leaf_shape": 1,
+	"young_color": Color(0.6, 0.25, 0.2),
+	"autumn_color": Color(0.85, 0.2, 0.1),
+	"internode": 0.02,
+	"alpha": 1.6,
+	"apical": 0.6,         # forte dominance en haut de l'arbre
+	"max_per_flush": 4,    # paires de feuilles
+	"preformed": 0,
+	"spur_len": 0.4,
+	"leaf_area": 0.5,      # deux bourgeons par nœud
+	"sympodial": false,
+	"opposite": true,
+	"fork": true,
+	"branch_angle": deg_to_rad(50.0),
+	"phyllotaxy": deg_to_rad(90.0),  # opposées décussées
+	"w_light": 0.35,
+	"w_up": 0.15,
+	"jitter": 0.06,
+	"shed_ratio": 0.04,
+	"bud_life": 52 * 4,
+	"backbud_chance": 0.5,
+	"capacity": 3000,
+	"max_sprouts": 2,
+	"flushes": {14: 1.0, 24: 0.5},
+	"whorl": 0,
+	"leaf_years": 0,
 }

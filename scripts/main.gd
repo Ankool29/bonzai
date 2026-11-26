@@ -116,6 +116,8 @@ func _add_pot() -> void:
 func _set_species(species: Dictionary) -> void:
 	sim.reset(randi(), species)
 	wood_mi.material_override = TreeMesh.bark_material(sim)
+	var lm := leaves_mi.material_override as ShaderMaterial
+	lm.set_shader_parameter("autumn_color", sim.autumn_color)
 
 
 func _build_ui() -> void:
@@ -162,8 +164,9 @@ func _build_ui() -> void:
 	var row3 := HBoxContainer.new()
 	box.add_child(row3)
 	_button(row3, "Feuilles", _toggle_leaves)
-	_button(row3, "Nouvel orme", func(): _new_tree(Species.ELM))
-	_button(row3, "Nouveau pin", func(): _new_tree(Species.PINE))
+	_button(row3, "Orme", func(): _new_tree(Species.ELM))
+	_button(row3, "Pin", func(): _new_tree(Species.PINE))
+	_button(row3, "Érable", func(): _new_tree(Species.MAPLE))
 	_button(row3, "Recentrer", _recenter)
 	# Chargement : une feuille qui tourne au milieu de l'écran pendant le calcul de la période.
 	loader = Polygon2D.new()

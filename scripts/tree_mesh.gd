@@ -75,6 +75,7 @@ static func bark_material(s: TreeSim) -> ShaderMaterial:
 	var mat := toon(1 if s.leaf_years == 0 else 2, Color.WHITE, true, 1)
 	for k in 4:
 		mat.set_shader_parameter(["tone1", "tone2", "tone3", "fissure"][k], s.bark_colors[k])
+	mat.set_shader_parameter("young_color", s.young_color)
 	return mat
 
 
@@ -393,6 +394,9 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool) -> void:
 		col *= Color(0.35, 0.62, 0.22) if h < 0.5 else Color(0.28, 0.55, 0.2)
 	var ink := Color(0.08, 0.14, 0.06)
 	var vein := col.darkened(0.25)
+	if sim.leaf_shape == 1:
+		_palmate(s.end, dir, side, nrm, l, 5 if h < 0.6 else 7, col, ink, vein)
+		return
 	# contour : côté droit de la base à la pointe, puis côté gauche (plus étroit) de la pointe à la base
 	var cont: Array[Vector3] = [b0]
 	for k in range(1, LEAF_PTS + 1):
@@ -417,6 +421,44 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool) -> void:
 		var m0 := b0 + dir * l * x
 		_line(m0, b0 + dir * l * x2 + side * _leaf_w(x2) * wmax * 0.85, 0.00012, nrm, vein)
 		_line(m0, b0 + dir * l * x2 - side * _leaf_w(x2) * wmax * 0.72, 0.00012, nrm, vein)
+
+
+## Feuille d'érable : long pétiole, limbe palmé de 5 ou 7 lobes lancéolés dentés, sinus profonds,
+## une nervure par lobe. Contour en étoile autour de la base du limbe, rempli en éventail.
+func _palmate(node: Vector3, dir: Vector3, side: Vector3, nrm: Vector3, l: float, lobes: int, col: Color, ink: Color, vein: Color) -> void:
+	var r := l * 0.32                      # rayon du limbe
+	var b0 := node + dir * l * 0.36        # base du limbe, au bout du pétiole
+	var spread := deg_to_rad(105.0)        # angle du lobe le plus latéral
+	var gap := spread * 2.0 / (lobes - 1)  # angle entre deux lobes
+	var pt := func(ang: float, rad: float) -> Vector3: return b0 + (dir * cos(ang) + side * sin(ang)) * rad
+	var cont: Array[Vector3] = []
+	cont.append(pt.call(-spread - gap * 0.5, r * 0.12))
+	var tips: Array[Vector3] = []
+	for i in lobes:
+		var a := -spread + gap * i
+		var len_i := r * (1.0 - 0.3 * absf(a) / spread)  # lobes latéraux plus courts
+		# bord gauche de la base vers la pointe, puis bord droit vers le sinus suivant ; dents une fois sur deux
+		for k in 7:
+			var t := k / 6.0
+			cont.append(pt.call(a - gap * 0.42 * pow(1.0 - t, 0.7), lerpf(r * 0.38, len_i, t) * (1.0 + 0.05 * (k % 2))))
+		tips.append(pt.call(a, len_i))
+		for k in range(5, -1, -1):
+			var t := k / 6.0
+			cont.append(pt.call(a + gap * 0.42 * pow(1.0 - t, 0.7), lerpf(r * 0.38, len_i, t) * (1.0 + 0.05 * (k % 2))))
+		if i < lobes - 1:
+			cont.append(pt.call(a + gap * 0.5, r * 0.32))  # fond du sinus
+	cont.append(pt.call(spread + gap * 0.5, r * 0.12))
+	for k in cont.size():
+		var p0 := cont[k]
+		var p1 := cont[(k + 1) % cont.size()]
+		_tri(b0, p0, p1, nrm, col)
+		var o0 := p0 + (p0 - b0).normalized() * 0.00035
+		var o1 := p1 + (p1 - b0).normalized() * 0.00035
+		_tri(p0, o0, o1, nrm, ink)
+		_tri(p0, o1, p1, nrm, ink)
+	_line(node, b0, 0.0003, nrm, ink)
+	for t in tips:
+		_line(b0, b0 + (t - b0) * 0.9, 0.00012, nrm, vein)
 
 
 ## Point du bord de la feuille : x de 0 (base) à 1 (pointe), bord légèrement denté.
