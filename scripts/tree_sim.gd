@@ -32,6 +32,8 @@ class Seg:
 	var weak := 0            # étés passés trop à l'ombre
 	var lat_q := 1.0         # qualité du bourgeon axillaire (puis vigueur propre du rameau latéral)
 	var release := 1.0       # bonus des bourgeons de ce nœud après une coupe (levée de dominance)
+	var relay := false       # bourgeon terminal avorté : la pousse repartira du dernier bourgeon latéral
+	var leaf_k := 1.0        # place dans sa pousse (0 : base, 1 : bout) ; les feuilles grandissent vers le bout
 	# recalculés à chaque poussée
 	var light := 0.0
 	var count := 0
@@ -49,6 +51,10 @@ var internode := 0.018
 var alpha := 1.6              # vigueur totale = alpha × lumière captée
 var apical := 0.53            # part de vigueur donnée à l'axe principal (λ)
 var max_per_flush := 4        # entre-nœuds max par bourgeon et par poussée
+var preformed := 0            # feuilles déjà formées dans le bourgeon (0 : environ une par unité de vigueur)
+var spur_len := 0.8           # longueur relative des entre-nœuds d'un rameau court
+var leaf_area := 1.0          # surface de feuille par nœud (ombre portée, cerne, seuil de dépérissement)
+var sympodial := false        # le bourgeon terminal avorte en hiver : croissance en zigzag
 var branch_angle := deg_to_rad(45.0)
 var phyllotaxy := deg_to_rad(180.0)  # alterne distique
 var w_dir := 1.0
@@ -196,6 +202,9 @@ func _flush(strength: float) -> void:
 func _end_of_year() -> void:
 	for s in segs:
 		s.release = 1.0
+		if sympodial and s.term_bud and s.lat_bud and not s.dry:
+			s.lat_bud = false
+			s.relay = true
 		if s.lat_bud:
 			s.lat_bud_age += 52
 			if s.lat_bud_age > bud_life:
@@ -207,7 +216,7 @@ func _end_of_year() -> void:
 	for s in segs:
 		if not s.dry:
 			var old := s.radius
-			s.radius = sqrt(s.radius * s.radius + ring_area * s.light / PI)
+			s.radius = sqrt(s.radius * s.radius + ring_area * leaf_area * s.light / PI)
 			if s.wound_r > 0.0:
 				# le bourrelet de cicatrisation avance avec le cerne, deux fois plus vite après la pince concave
 				s.wound_r = maxf(0.0, s.wound_r - (s.radius - old) * (6.0 if s.wound_concave else 3.0))
@@ -262,7 +271,7 @@ func _dieback() -> void:
 		var s := segs[i]
 		if s.dry:
 			continue
-		if s.light < shed_ratio * s.count:
+		if s.light < shed_ratio * leaf_area * s.count:
 			s.weak += 1
 			if s.weak >= 2:
 				for k in subtree(i):
@@ -328,8 +337,12 @@ func _grow() -> void:
 		var s := segs[i]
 		# Démarre avec une probabilité égale à sa vigueur (sous 1 : rameau court).
 		if s.term_bud and s.v_term + rng.randf() >= 1.0:
+			var d := s.end - s.start
+			if s.relay:  # repart du bourgeon latéral : l'axe fait un coude
+				d = d.normalized() + s.lat_dir.normalized()
 			s.term_bud = false
-			s.main_child = _shoot(i, s.end - s.start, s.v_term)
+			s.relay = false
+			s.main_child = _shoot(i, d, s.v_term)
 		if s.lat_bud and s.v_lat + rng.randf() >= 1.0:
 			s.lat_bud = false
 			s.lat_child = _shoot(i, s.lat_dir, s.v_lat)
@@ -343,7 +356,9 @@ func _grow() -> void:
 func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 	var spur := v < 1.0
 	var n := 1 if spur else clampi(int(v + rng.randf()), 1, max_per_flush)
-	var len_v := 0.8 if spur else clampf(0.6 + 0.15 * v, 0.7, 1.5)
+	if preformed > 0:
+		n = clampi(int(preformed + (0.0 if spur else v) + rng.randf()), 1, max_per_flush)
+	var len_v := spur_len if spur else clampf(0.6 + 0.15 * v, 0.7, 1.5)
 	var first := -1
 	var prev := parent_i
 	var d := dir.normalized()
@@ -355,6 +370,7 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 		var s := Seg.new()
 		s.parent = prev
 		s.start = p
+		s.leaf_k = float(k + 1) / n
 		var profile := 1.0 if spur else 0.85 + 0.35 * sin(PI * (k + 0.5) / n)
 		s.end = p + d * internode * len_v * profile * rng.randf_range(0.8, 1.2)
 		s.radius = tip_radius
@@ -482,7 +498,7 @@ func _cast(p: Vector3) -> void:
 			break
 		if y >= GY:
 			continue
-		var v := SH_A * pow(SH_B, -q)
+		var v := SH_A * leaf_area * pow(SH_B, -q)
 		for dz in range(-q, q + 1):
 			var z := c.z + dz
 			if z < 0 or z >= GZ:

@@ -285,8 +285,8 @@ func _cut() -> void:
 	if i == 0:
 		_say("On ne coupe pas le tronc à sa base.")
 		return
-	if tool == 0 and s.born < floorf(sim.week / 52.0) * 52.0:
-		_say("Le pinçage ne marche que sur les pousses vertes de l'année.")
+	if tool == 0 and s.born < sim.week - 8:
+		_say("Le pinçage ne marche que sur les pousses vertes de moins de deux mois.")
 		return
 	if tool == 1 and s.radius > TreeSim.WOUND_MIN:
 		_say("Trop épais pour les ciseaux : prends la pince concave.")

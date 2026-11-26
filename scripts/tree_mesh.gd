@@ -386,7 +386,7 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool) -> void:
 	var dir := Vector3(s.lat_dir.x, s.lat_dir.y * 0.3, s.lat_dir.z).normalized()
 	var side := Vector3.UP.cross(dir).normalized().rotated(dir, (h - 0.5) * 0.8)
 	var nrm := dir.cross(side).normalized()
-	var l := sim.foliage_size
+	var l := sim.foliage_size * (0.6 + 0.4 * s.leaf_k)  # feuilles plus petites à la base de la pousse
 	var wmax := l * 0.27
 	var b0 := s.end + dir * 0.003  # base du limbe, au bout du pétiole
 	if not selected:
