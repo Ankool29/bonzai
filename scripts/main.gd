@@ -6,7 +6,9 @@ extends Node
 
 var garden := Garden.new()
 var sim: TreeSim             # arbre ouvert
-var garden_panel: PanelContainer
+var garden_panel: PanelContainer   # panneau plein écran : jardin ou rempotage
+var pot_mi := MeshInstance3D.new()
+var soil_mi := MeshInstance3D.new()
 var wood_mi := MeshInstance3D.new()
 var leaves_mi := MeshInstance3D.new()
 var needles_mi := MeshInstance3D.new()
@@ -100,20 +102,24 @@ func _ready() -> void:
 
 ## Pot rectangulaire en terre cuite, terre d'akadama en granulés.
 func _add_pot() -> void:
-	var pot := MeshInstance3D.new()
 	var b := BoxMesh.new()
-	b.size = Vector3(0.32, 0.05, 0.22)
-	pot.mesh = b
-	pot.position.y = -0.026
-	pot.material_override = TreeMesh.toon(0, Color(0.55, 0.28, 0.2), true)
-	world.add_child(pot)
-	var soil := MeshInstance3D.new()
+	b.size = Vector3(0.32, 0.05, 0.22)  # pot de 8 L ; mis à l'échelle selon le volume (_size_pot)
+	pot_mi.mesh = b
+	pot_mi.material_override = TreeMesh.toon(0, Color(0.55, 0.28, 0.2), true)
+	world.add_child(pot_mi)
 	var pl := PlaneMesh.new()
 	pl.size = Vector2(0.3, 0.2)
-	soil.mesh = pl
-	soil.position.y = 0.0005
-	soil.material_override = TreeMesh.toon(3, Color(0.5, 0.33, 0.22))
-	world.add_child(soil)
+	soil_mi.mesh = pl
+	soil_mi.position.y = 0.0005
+	soil_mi.material_override = TreeMesh.toon(3, Color(0.5, 0.33, 0.22))
+	world.add_child(soil_mi)
+
+
+func _size_pot() -> void:
+	var k := pow(sim.pot_volume / 8.0, 1.0 / 3.0)
+	pot_mi.scale = Vector3.ONE * k
+	pot_mi.position.y = -0.026 * k
+	soil_mi.scale = Vector3(k, 1.0, k)
 
 
 ## Ouvre l'arbre i du jardin.
@@ -126,6 +132,7 @@ func _open(i: int) -> void:
 	lm.set_shader_parameter("autumn_color", sim.autumn_color)
 	_clear_cut()
 	layout = sim.layout
+	_size_pot()
 	_refresh()
 	_recenter()
 
@@ -175,6 +182,7 @@ func _build_ui() -> void:
 	box.add_child(row3)
 	_button(row3, "Feuilles", _toggle_leaves)
 	_button(row3, "Jardin", _show_garden)
+	_button(row3, "Rempoter", _show_repot)
 	_button(row3, "Recentrer", _recenter)
 	# Chargement : une feuille qui tourne au milieu de l'écran pendant le calcul de la période.
 	loader = Polygon2D.new()
@@ -195,6 +203,52 @@ func _build_ui() -> void:
 	garden_panel.theme = theme
 	garden_panel.visible = false
 	layer.add_child(garden_panel)
+
+
+## Rempotage : choix du pot et de la part des racines à couper.
+func _show_repot() -> void:
+	if _busy():
+		return
+	for c in garden_panel.get_children():
+		c.queue_free()
+	var box := VBoxContainer.new()
+	garden_panel.add_child(box)
+	var top := Control.new()
+	top.custom_minimum_size.y = 60 * ui_scale
+	box.add_child(top)
+	var title := Label.new()
+	title.text = "Rempoter (idéal : fin février à début avril)\nPot actuel : %d L" % roundi(sim.pot_volume)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	var choice := [sim.pot_volume, 0.0]  # volume, part des racines coupées
+	var groups := [ButtonGroup.new(), ButtonGroup.new()]
+	var rows := [[[8.0, "Grand 8 L"], [3.0, "Moyen 3 L"], [1.0, "Petit 1 L"]],
+			[[0.0, "Racines intactes"], [0.33, "Couper 1/3"], [0.5, "Couper 1/2"]]]
+	for g in 2:
+		var row := HBoxContainer.new()
+		box.add_child(row)
+		for opt in rows[g]:
+			var b := _button(row, opt[1], Callable())
+			b.toggle_mode = true
+			b.button_group = groups[g]
+			b.button_pressed = is_equal_approx(opt[0], choice[g])
+			b.pressed.connect(func(): choice[g] = opt[0])
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(spacer)
+	var row3 := HBoxContainer.new()
+	box.add_child(row3)
+	_button(row3, "Rempoter", func():
+		garden_panel.visible = false
+		_say(sim.repot(choice[0], choice[1]))
+		garden.save_tree(garden.current)
+		_size_pot()
+		_info(sim.week))
+	_button(row3, "Annuler", func(): garden_panel.visible = false)
+	var bottom := Control.new()
+	bottom.custom_minimum_size.y = 40 * ui_scale
+	box.add_child(bottom)
+	garden_panel.visible = true
 
 
 ## Jardin : une ligne par arbre (toucher pour l'ouvrir, « Suppr. » deux fois pour le supprimer),
@@ -423,8 +477,12 @@ func _info(time: float) -> void:
 	elif w >= 37 and w < 50:
 		season = "automne"
 	var extra := "calcul %d ms" % calc_ms if calc_ms > 0 else "%d segments" % sim.segs.size()
-	info.text = "%s · année %d · semaine %d (%s)\n%s · hauteur %d cm" % [
-		garden.names[garden.current], wk / 52 + 1, w + 1, season, extra, roundi(sim.height() * 100.0)]
+	var v := sim.last_vigor
+	var vig := "forte" if v >= 2.0 else ("bonne" if v >= 1.0 else ("faible" if v >= 0.5 else "très faible"))
+	var state := "mort" if sim.segs[0].dry else "vigueur %s · réserves %d %%" % [vig, roundi(minf(sim.health(), 1.5) * 100.0)]
+	info.text = "%s · année %d · semaine %d (%s)\n%s · hauteur %d cm · pot %d L\n%s" % [
+		garden.names[garden.current], wk / 52 + 1, w + 1, season, extra, roundi(sim.height() * 100.0),
+		roundi(sim.pot_volume), state]
 
 
 func _update_cam() -> void:
