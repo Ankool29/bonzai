@@ -1,5 +1,5 @@
 class_name Garden
-## Le jardin : tous les arbres du joueur, sur un même calendrier, sauvegardés dans user://.
+## Le jardin : tous les arbres du joueur, chacun avec sa propre date, sauvegardés dans user://.
 ## Un fichier d'index (noms, arbre ouvert) et un fichier par arbre (on ne réécrit que celui qui change).
 
 const INDEX := "user://jardin.save"
@@ -30,10 +30,10 @@ func load_all() -> void:
 	current = clampi(current, 0, maxi(trees.size() - 1, 0))
 
 
-## Nouvel arbre à la date du jardin ; devient l'arbre ouvert.
+## Nouvel arbre, mis en pot début mars de l'année 1 ; devient l'arbre ouvert.
 func add(species: Dictionary) -> void:
 	var t := TreeSim.new()
-	t.reset(randi(), species, trees[0].week if not trees.is_empty() else 10)
+	t.reset(randi(), species)
 	trees.append(t)
 	ids.append(next_id)
 	names.append("%s %d" % [t.name.split(" ")[0], next_id])
