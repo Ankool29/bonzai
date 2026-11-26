@@ -484,6 +484,8 @@ func _info(time: float) -> void:
 	var v := sim.last_vigor
 	var vig := "forte" if v >= 2.0 else ("bonne" if v >= 1.0 else ("faible" if v >= 0.5 else "très faible"))
 	var state := "mort" if sim.segs[0].dry else "vigueur %s · réserves %d %%" % [vig, roundi(minf(sim.health(), 1.5) * 100.0)]
+	if sim.segs[0].count > 0.85 * sim.capacity:
+		state += "\nlimite de rameaux du jeu atteinte : éclaircir pour relancer"
 	info.text = "%s · année %d · semaine %d (%s)\n%s · hauteur %d cm · pot %d L\n%s" % [
 		garden.names[garden.current], wk / 52 + 1, w + 1, season, extra, roundi(sim.height() * 100.0),
 		roundi(sim.pot_volume), state]
