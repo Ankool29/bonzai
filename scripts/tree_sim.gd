@@ -62,6 +62,7 @@ var max_per_flush := 4        # entre-nœuds max par bourgeon et par poussée
 var preformed := 0            # feuilles déjà formées dans le bourgeon (0 : environ une par unité de vigueur)
 var spur_len := 0.8           # longueur relative des entre-nœuds d'un rameau court
 var leaf_area := 1.0          # surface de feuille par nœud (ombre portée, cerne, seuil de dépérissement)
+var light_exp := false        # lumière à travers le feuillage (feuillus tolérants à l'ombre)
 var sympodial := false        # le bourgeon terminal avorte en hiver : croissance en zigzag
 var opposite := false         # bourgeons par paires opposées (érable) ; phyllotaxy = rotation d'une paire à l'autre
 var fork := false             # le bout du rameau avorte en hiver : repart des deux bourgeons de la dernière paire
@@ -656,7 +657,11 @@ func _shadow_at(c: Vector3i) -> float:
 	return shadow[(c.y * GZ + c.z) * GX + c.x]
 
 
+## light_exp : la lumière traverse le feuillage en s'affaiblissant (Beer-Lambert), l'intérieur d'un houppier
+## dense n'est jamais tout à fait noir. Sinon (pin) : l'ombre s'additionne jusqu'au noir.
 func _light(p: Vector3) -> float:
+	if light_exp:
+		return minf(exp(-_shadow_at(_cell(p))), 1.0)
 	return clampf(1.0 - _shadow_at(_cell(p)) + SH_A, 0.0, 1.0)
 
 

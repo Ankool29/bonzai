@@ -13,7 +13,7 @@ const ELM := {
 	# entre-nœuds courts (5 à 15 mm), feuilles plus grandes vers le bout, croissance en zigzag (sympodiale).
 	"internode": 0.010,
 	"alpha": 1.6,
-	"apical": 0.53,
+	"apical": 0.5,
 	"max_per_flush": 8,
 	"preformed": 3,
 	"spur_len": 0.5,
@@ -22,7 +22,7 @@ const ELM := {
 	"branch_angle": deg_to_rad(45.0),
 	"phyllotaxy": deg_to_rad(180.0),  # alterne distique
 	"w_light": 0.35,
-	"w_up": 0.12,
+	"w_up": 0.06,
 	"jitter": 0.06,
 	"shed_ratio": 0.04,
 	"bud_life": 52 * 8,
@@ -37,6 +37,7 @@ const ELM := {
 	"fork": false,
 	"bud_color": Color(0.42, 0.28, 0.18),
 	"bud_size": 0.0025,
+	"light_exp": true,
 	"whorl": 0,          # bourgeon latéral à chaque nœud
 	"leaf_years": 0,     # caduc
 }
@@ -77,6 +78,7 @@ const PINE := {
 	"fork": false,
 	"bud_color": Color(0.86, 0.83, 0.76),
 	"bud_size": 0.012,
+	"light_exp": false,
 	"whorl": 4,
 	"leaf_years": 3,
 }
@@ -96,7 +98,7 @@ const MAPLE := {
 	"autumn_color": Color(0.85, 0.2, 0.1),
 	"internode": 0.02,
 	"alpha": 1.6,
-	"apical": 0.6,         # forte dominance en haut de l'arbre
+	"apical": 0.5,         # dominance du haut réduite (étape 18) : houppier plus étalé
 	"max_per_flush": 4,    # paires de feuilles
 	"preformed": 0,
 	"spur_len": 0.4,
@@ -107,7 +109,7 @@ const MAPLE := {
 	"branch_angle": deg_to_rad(50.0),
 	"phyllotaxy": deg_to_rad(90.0),  # opposées décussées
 	"w_light": 0.35,
-	"w_up": 0.15,
+	"w_up": 0.08,
 	"jitter": 0.06,
 	"shed_ratio": 0.04,
 	"bud_life": 52 * 4,
@@ -117,6 +119,7 @@ const MAPLE := {
 	"flushes": {14: 1.0, 24: 0.5},
 	"bud_color": Color(0.62, 0.16, 0.12),
 	"bud_size": 0.003,
+	"light_exp": true,
 	"whorl": 0,
 	"leaf_years": 0,
 }
