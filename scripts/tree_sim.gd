@@ -37,6 +37,9 @@ class Seg:
 	var leaf_k := 1.0        # place dans sa pousse (0 : base, 1 : bout) ; les feuilles grandissent vers le bout
 	var needle := 1.0        # pin : longueur relative des aiguilles (0 : base nue de la chandelle, couronne)
 	var forced := false      # pin : bourgeon né d'une coupe de chandelle, part même s'il est faible
+	var wire := 0            # fil posé (identifiant dans TreeSim.wires), 0 : aucun
+	var mark := 0.0          # marque laissée par un fil qui a mordu (0 à 1), s'efface avec les cernes
+	var crack := false       # fêlée en pliant : une chance sur deux de dépérir à la fin de l'été
 	# recalculés à chaque poussée
 	var light := 0.0
 	var count := 0
@@ -111,6 +114,11 @@ var roots := 1.0              # ce que les racines peuvent alimenter ; suivent l
 var pot_volume := 8.0         # litres
 var low_years := 0            # années de suite à bout de réserves
 var last_vigor := 0.0         # vigueur moyenne des pousses de la dernière poussée
+# Ligature (étape 19) : id -> {need, done, over, angle, raffia, bends: [[axe, angle]...]}
+var wires := {}
+var next_wire := 1
+const WIRE_SEGS := 6            # entre-nœuds couverts par un fil
+const WIRE_GRACE := 6           # semaines de pousse après la prise avant que le fil morde
 var _vsum := 0.0
 var _vn := 0
 const ROOTS_PER_LITRE := 40.0  # lumière qu'un litre de pot peut alimenter (8 L : arbre d'environ 75 cm à 8 ans)
@@ -202,7 +210,135 @@ func step_week() -> void:
 		_dieback()
 	if w == 0:
 		_end_of_year()
+	_wires_week(w)
 
+
+## Pose un fil sur l'entre-nœud i et les suivants de son axe (WIRE_SEGS au plus). Raphia sur les
+## branches de plus de 5 mm. Renvoie un message.
+func add_wire(i: int) -> String:
+	if segs[i].wire > 0:
+		return "Déjà ligaturée."
+	if segs[i].dry:
+		return "On ne ligature pas le bois mort."
+	var id := next_wire
+	next_wire += 1
+	var r := segs[i].radius
+	var pliant := whorl > 0  # pin : bois souple, mais prend la forme lentement
+	wires[id] = {"need": (40.0 if pliant else 12.0) * clampf(sqrt(r / 0.0015), 0.7, 3.0), "done": 0.0,
+			"over": 0, "angle": 0.0, "raffia": r > 0.0025, "bends": []}
+	var k := i
+	for n in WIRE_SEGS:
+		if k < 0 or segs[k].dry or segs[k].wire > 0:
+			break
+		segs[k].wire = id
+		k = segs[k].main_child
+	return "Ligaturée avec raphia (branche épaisse)." if wires[id]["raffia"] else "Ligaturée."
+
+
+## Entre-nœuds d'un fil, de la base vers la pointe (un parent est toujours avant ses enfants).
+func wire_segs(id: int) -> Array[int]:
+	var out: Array[int] = []
+	for i in segs.size():
+		if segs[i].wire == id:
+			out.append(i)
+	return out
+
+
+## Retire le fil ; si la branche n'a pas encore pris sa forme, elle revient en partie en arrière.
+func remove_wire(id: int) -> String:
+	if not wires.has(id):
+		return ""
+	var w: Dictionary = wires[id]
+	var back: float = 1.0 - clampf(w["done"] / w["need"], 0.0, 1.0)
+	var ch := wire_segs(id)
+	if back > 0.0 and not ch.is_empty():
+		var bends: Array = w["bends"]
+		for b in range(bends.size() - 1, -1, -1):
+			_bend_chain(ch, bends[b][0], -bends[b][1] * back)
+	for i in ch:
+		segs[i].wire = 0
+	wires.erase(id)
+	if back > 0.6:
+		return "Fil retiré trop tôt : la branche revient presque entièrement."
+	if back > 0.0:
+		return "Fil retiré un peu tôt : la branche revient de %d %%." % roundi(back * 100.0)
+	return "Fil retiré : la branche garde sa forme."
+
+
+## Plie la branche ligaturée : angle (radians) autour de l'axe donné, réparti sur les entre-nœuds du fil.
+## Au-delà de la limite de la branche, elle se fêle ; bien au-delà, elle casse.
+func bend(id: int, axis: Vector3, angle: float) -> String:
+	var ch := wire_segs(id)
+	if ch.is_empty() or absf(angle) < 0.001:
+		return ""
+	var w: Dictionary = wires[id]
+	var r := segs[ch[0]].radius
+	# rameau de 1,5 mm : 60° par entre-nœud ; plus épais, beaucoup moins ; pin plus souple ; raphia +50 %
+	var lim := deg_to_rad(60.0) * clampf(0.0015 / r, 0.1, 2.0) * ch.size()
+	lim *= (1.3 if whorl > 0 else 1.0) * (1.5 if w["raffia"] else 1.0)
+	var total: float = w["angle"] + absf(angle)
+	if total > lim * 1.25 and ch[0] > 0:
+		for i in ch:
+			segs[i].wire = 0
+		wires.erase(id)
+		prune(ch[0], true)
+		return "Crac ! La branche a cassé."
+	_bend_chain(ch, axis, angle)
+	w["angle"] = total
+	w["bends"].append([axis, angle])
+	if total > lim:
+		for i in ch:
+			segs[i].crack = true
+		return "La branche s'est fêlée : elle risque de dépérir."
+	if total > lim * 0.8:
+		return "La branche approche de sa limite."
+	return ""
+
+
+## Fait tourner chaque entre-nœud de la chaîne (et tout ce qu'il porte) d'une part égale de l'angle,
+## autour de sa base : la courbure se répartit le long du fil.
+func _bend_chain(ch: Array[int], axis: Vector3, angle: float) -> void:
+	var a := angle / ch.size()
+	var ax := axis.normalized()
+	for i in ch:
+		var pivot := segs[i].start
+		for k in subtree(i):
+			var s := segs[k]
+			s.start = pivot + (s.start - pivot).rotated(ax, a)
+			s.end = pivot + (s.end - pivot).rotated(ax, a)
+			s.lat_dir = s.lat_dir.rotated(ax, a)
+			s.wound_dir = s.wound_dir.rotated(ax, a)
+	layout += 1
+
+
+## Chaque semaine de pousse, le fil fait prendre la forme ; une fois prise, au-delà de WIRE_GRACE semaines,
+## il mord l'écorce de plus en plus.
+func _wires_week(w: int) -> void:
+	if wires.is_empty() or w < 14 or w > 40:
+		return
+	var biting := []
+	for id in wires:
+		var d: Dictionary = wires[id]
+		d["done"] += 1.0
+		if d["done"] >= d["need"]:
+			d["over"] += 1
+			if d["over"] > WIRE_GRACE:
+				biting.append(id)
+	if not biting.is_empty():
+		for s in segs:
+			if s.wire in biting:
+				s.mark = minf(1.0, s.mark + 0.08)
+
+
+## État du fil pour l'affichage : prise en %, et s'il mord.
+func wire_state(id: int) -> String:
+	if not wires.has(id):
+		return ""
+	var d: Dictionary = wires[id]
+	var txt := "fil : forme prise à %d %%" % roundi(clampf(d["done"] / d["need"], 0.0, 1.0) * 100.0)
+	if d["over"] > WIRE_GRACE:
+		txt += " · le fil mord !"
+	return txt
 
 ## Réserves rapportées aux racines : 1 = pleine santé, < 0,25 = épuisé.
 func health() -> float:
@@ -332,6 +468,8 @@ func _end_of_year() -> void:
 	for s in segs:
 		s.release = 1.0
 		s.forced = false
+		if s.wire == 0 and s.mark > 0.0:
+			s.mark = maxf(0.0, s.mark - 0.3)  # les cernes recouvrent peu à peu la marque du fil
 		if fork and s.term_bud and s.lat_bud and not s.dry:
 			s.term_bud = false
 		if sympodial and s.term_bud and s.lat_bud and not s.dry:
@@ -419,6 +557,15 @@ func _dieback() -> void:
 		var s := segs[i]
 		if s.dry:
 			continue
+		if s.crack:  # branche fêlée en pliant : guérit ou meurt
+			s.crack = false
+			if rng.randf() < 0.5:
+				for k in subtree(i):
+					segs[k].dry = true
+					segs[k].term_bud = false
+					segs[k].lat_bud = false
+					segs[k].dry_week = week
+				continue
 		if s.light < shed_ratio * leaf_area * s.count:
 			s.weak += 1
 			if s.weak >= 2:

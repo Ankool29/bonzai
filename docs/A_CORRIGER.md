@@ -10,5 +10,6 @@
 - Étape 16 : les rosettes de feuilles des rameaux courts sont seulement dessinées (elles ne font pas d'ombre dans la simulation).
 - Étape 17 : tailler sans répit affaiblit l'arbre la première année puis il s'adapte (comme une haie) ; seul un arbre presque sans feuillage s'épuise et meurt. À durcir si c'est trop indulgent.
 - Étape 17 : les arbres plantés avant l'étape 17 démarrent avec des racines égales à leurs anciennes réserves.
+- Étape 19 : le raphia est posé automatiquement au-dessus de 5 mm (pas encore de bouton) ; pliage autour d'un seul axe par geste ; pas de hauban.
 - Le gros bois mort ne tombe jamais tout seul.
 - Pin : la coupe des chandelles donne des bourgeons, mais beaucoup ne partent pas en pousse d'été (vigueur faible) : à régler après essais.

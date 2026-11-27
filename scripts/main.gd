@@ -20,9 +20,11 @@ var dist := 0.35
 var target := Vector3(0, 0.05, 0)
 var axis: Array[int] = []    # branche sélectionnée, de sa base à sa pointe
 var cut_k := -1                # entre-nœud de l'axe où passe la coupe (juste au-dessus du nœud d'en dessous)
-var tool := 1                  # 0 : doigts (pinçage), 1 : ciseaux, 2 : pince concave
+var tool := 1                  # 0 : doigts (pinçage), 1 : ciseaux, 2 : pince concave, 3 : fil (ligature)
 var tool_btns: Array[Button] = []
 var dragging_cut := false
+var dragging_bend := false      # outil fil : on plie la branche ligaturée en glissant depuis le repère
+var bend_q := Quaternion.IDENTITY
 var overlay := MeshInstance3D.new()  # repère de coupe et bourgeons
 var msg: Label
 var msg_until := 0
@@ -173,12 +175,12 @@ func _build_ui() -> void:
 	_button(row1, "+1 an", func(): _advance(52))
 	var row2 := HBoxContainer.new()
 	box.add_child(row2)
-	for k in 3:
-		var b := _button(row2, ["Doigts", "Ciseaux", "Pince concave"][k], _set_tool.bind(k))
+	for k in 4:
+		var b := _button(row2, ["Doigts", "Ciseaux", "Concave", "Fil"][k], _set_tool.bind(k))
 		b.toggle_mode = true
 		tool_btns.append(b)
 	_set_tool(tool)
-	cut_btn = _button(row2, "Couper", _cut)
+	cut_btn = _button(row2, "Couper", _act)
 	var row3 := HBoxContainer.new()
 	box.add_child(row3)
 	_button(row3, "Feuilles", _toggle_leaves)
@@ -406,6 +408,32 @@ func _set_tool(k: int) -> void:
 	tool = k
 	for i in tool_btns.size():
 		tool_btns[i].set_pressed_no_signal(i == k)
+	_update_act()
+
+
+## Bouton d'action : couper, ou avec le fil, ligaturer / déligaturer la branche sélectionnée.
+func _update_act() -> void:
+	if cut_btn == null:
+		return
+	cut_btn.disabled = cut_k < 0
+	if tool != 3:
+		cut_btn.text = "Couper"
+	else:
+		cut_btn.text = "Déligaturer" if cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0 else "Ligaturer"
+
+
+func _act() -> void:
+	if tool != 3:
+		_cut()
+		return
+	if _busy() or cut_k < 0:
+		return
+	var i := axis[cut_k]
+	var id := sim.segs[i].wire
+	_say(sim.remove_wire(id) if id > 0 else sim.add_wire(i) + " Glisse depuis le repère jaune pour plier.")
+	garden.save_tree(garden.current)
+	layout = sim.layout
+	_refresh()
 
 
 ## Coupe à l'endroit du repère avec l'outil choisi ; le jeu refuse un outil inadapté.
@@ -457,7 +485,7 @@ func _refresh() -> void:
 	anim_t1 = sim.week
 	_show(TreeMesh.build(sim, hl, sim.week, sim.week, show_leaves))
 	_set_time(sim.week)
-	cut_btn.disabled = cut_k < 0
+	_update_act()
 	_info(sim.week)
 	_draw_overlay()
 	_update_cam()
@@ -483,6 +511,8 @@ func _info(time: float) -> void:
 	var extra := "calcul %d ms" % calc_ms if calc_ms > 0 else "%d segments" % sim.segs.size()
 	var v := sim.last_vigor
 	var vig := "forte" if v >= 2.0 else ("bonne" if v >= 1.0 else ("faible" if v >= 0.5 else "très faible"))
+	if cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0:
+		extra += " · " + sim.wire_state(sim.segs[axis[cut_k]].wire)
 	var state := "mort" if sim.segs[0].dry else "vigueur %s · réserves %d %%" % [vig, roundi(minf(sim.health(), 1.5) * 100.0)]
 	if sim.segs[0].count > 0.85 * sim.capacity:
 		state += "\nlimite de rameaux du jeu atteinte : éclaircir pour relancer"
@@ -510,8 +540,11 @@ func _unhandled_input(ev: InputEvent) -> void:
 			if touches.size() == 1:
 				tap_start = ev.position
 				tap_moved = false
-				# doigt posé sur le repère de coupe : on le fait glisser le long de la branche
-				dragging_cut = cut_k >= 0 and _cut_screen_pos().distance_to(ev.position) < 45.0 * ui_scale
+				# doigt posé sur le repère : on le fait glisser le long de la branche, ou on plie la branche ligaturée
+				var on_mark := cut_k >= 0 and _cut_screen_pos().distance_to(ev.position) < 45.0 * ui_scale
+				dragging_bend = on_mark and tool == 3 and sim.segs[axis[cut_k]].wire > 0
+				dragging_cut = on_mark and not dragging_bend
+				bend_q = Quaternion.IDENTITY
 			else:
 				tap_moved = true
 				pinch = _pinch_len()
@@ -519,6 +552,19 @@ func _unhandled_input(ev: InputEvent) -> void:
 				mid = (p[0] + p[1]) * 0.5
 		elif touches.has(ev.index):
 			touches.erase(ev.index)
+			if dragging_bend and touches.is_empty():
+				dragging_bend = false
+				var ang := bend_q.get_angle()
+				if ang > 0.01:
+					var m := sim.bend(sim.segs[axis[cut_k]].wire, bend_q.get_axis(), ang)
+					if m != "":
+						_say(m)
+					garden.save_tree(garden.current)
+					if m.begins_with("Crac"):
+						_clear_cut()  # la branche a cassé : les indices ont changé
+					layout = sim.layout
+				_refresh()
+				return
 			if dragging_cut and touches.is_empty():
 				dragging_cut = false
 				if tap_moved:
@@ -539,7 +585,17 @@ func _unhandled_input(ev: InputEvent) -> void:
 		touches[ev.index] = ev.position
 		if ev.position.distance_to(tap_start) > 12.0 * ui_scale:
 			tap_moved = true
-		if touches.size() == 1 and dragging_cut:
+		if touches.size() == 1 and dragging_bend:
+			# glisser vers un côté de l'écran plie la branche de ce côté
+			var bas := cam.global_transform.basis
+			var drag: Vector3 = bas.x * ev.relative.x - bas.y * ev.relative.y
+			var ch := sim.wire_segs(sim.segs[axis[cut_k]].wire)
+			var bdir := (sim.segs[ch[-1]].end - sim.segs[ch[0]].start).normalized()
+			var ax := bdir.cross(drag)
+			if ax.length() > 0.0001:
+				bend_q = Quaternion(ax.normalized(), ev.relative.length() * 0.006) * bend_q
+			_draw_overlay()
+		elif touches.size() == 1 and dragging_cut:
 			_move_cut(ev.position)
 		elif touches.size() == 1 and tap_moved:
 			yaw -= ev.relative.x * 0.008
@@ -651,6 +707,14 @@ func _draw_overlay() -> void:
 		im.surface_add_vertex(c.start - v * r)
 		im.surface_set_color(Color(1.0, 0.85, 0.1))
 		im.surface_add_vertex(c.start + v * r)
+	if dragging_bend:  # aperçu du pliage (orange), pivot à la base du fil
+		var ch := sim.wire_segs(c.wire)
+		var pivot := sim.segs[ch[0]].start
+		for k in sim.subtree(ch[0]):
+			var s := sim.segs[k]
+			for p in [s.start, s.end]:
+				im.surface_set_color(Color(1.0, 0.55, 0.1))
+				im.surface_add_vertex(pivot + bend_q * (p - pivot))
 	if dragging_cut:
 		for k in sim.subtree(axis[cut_k]):
 			var s := sim.segs[k]
