@@ -12,3 +12,4 @@
 - Étape 19 : le raphia est posé automatiquement au-dessus de 5 mm (pas encore de bouton) ; pliage autour d'un seul axe par geste ; pas de hauban.
 - Le gros bois mort ne tombe jamais tout seul.
 - Pin : la coupe des chandelles donne des bourgeons, mais beaucoup ne partent pas en pousse d'été (vigueur faible) : à régler après essais.
+- Étape 22 : le jardin a 9 places ; une ancienne sauvegarde de plus de 9 arbres garde les suivants invisibles. Pas d'éclairage de saison au jardin (chaque arbre a sa propre date).

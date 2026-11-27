@@ -6,7 +6,16 @@ extends Node
 
 var garden := Garden.new()
 var sim: TreeSim             # arbre ouvert
-var garden_panel: PanelContainer   # panneau plein écran : jardin ou rempotage
+var garden_panel: PanelContainer   # panneau plein écran : nouvel arbre ou rempotage
+var exhibit := Exhibit.new()       # jardin d'exposition (étape 22)
+var in_garden := false             # vue du jardin ; sinon écran de travail de l'arbre ouvert
+var sun := DirectionalLight3D.new()
+var max_dist := 2.0                # recul maximal de la caméra
+var press_ms := 0                  # début du toucher (appui long)
+var lifted := -1                   # emplacement de l'arbre soulevé, -1 si aucun
+var pending_open := -1             # emplacement à ouvrir quand la caméra a fini de s'approcher
+var remove_ms := 0                 # premier appui sur « Retirer » (confirmation)
+var gauges: HBoxContainer
 var pot_mi := MeshInstance3D.new()
 var soil_mi := MeshInstance3D.new()
 var wood_mi := MeshInstance3D.new()
@@ -88,12 +97,12 @@ func _ready() -> void:
 	var we := WorldEnvironment.new()
 	we.environment = env
 	world.add_child(we)
-	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-55, 35, 0)
 	sun.light_energy = 1.1
 	sun.shadow_enabled = false  # pas d'ombres pendant le travail (chauffe) ; elles serviront à l'exposition
 	sun.directional_shadow_max_distance = 3.0  # ombres nettes sur la petite scène
 	world.add_child(sun)
+	world.add_child(exhibit)
 	world.add_child(wood_mi)
 	world.add_child(leaves_mi)
 	leaves_mi.material_override = TreeMesh.toon(0, Color.WHITE, false, 2)
@@ -118,8 +127,8 @@ func _ready() -> void:
 	_build_ui()
 	garden.load_all()
 	if garden.trees.is_empty():
-		garden.add(Species.ELM)
-	_open(garden.current)
+		garden.add(Species.ELM, Garden.SLOTS - 1)  # premier arbre sur le socle d'honneur
+	_enter_garden()
 
 
 ## Pot rectangulaire en terre cuite, terre d'akadama en granulés.
@@ -217,7 +226,7 @@ func _build_ui() -> void:
 	info = Label.new()
 	info.add_theme_font_size_override("font_size", int(19 * ui_scale))
 	tbox.add_child(info)
-	var gauges := HBoxContainer.new()  # jauges de vigueur et de réserves
+	gauges = HBoxContainer.new()  # jauges de vigueur et de réserves
 	tbox.add_child(gauges)
 	for k in 2:
 		var l := Label.new()
@@ -270,9 +279,10 @@ func _build_ui() -> void:
 		b.add_theme_stylebox_override("normal", _box(ORANGE, GOLD))
 		b.add_theme_stylebox_override("hover", _box(ORANGE, GOLD))
 	_button(pages[3], "Feuilles", _toggle_leaves, "feuilles")
-	_button(pages[3], "Jardin", _show_garden, "jardin")
+	_button(pages[3], "Jardin", _enter_garden, "jardin")
 	_button(pages[3], "Rempoter", _show_repot, "rempoter")
 	_button(pages[3], "Recentrer", _recenter, "recentrer")
+	_button(pages[3], "Retirer", _remove, "retirer")
 	_tab(0)
 	# Chargement : une feuille qui tourne au milieu de l'écran pendant le calcul de la période.
 	loader = Polygon2D.new()
@@ -342,60 +352,137 @@ func _show_repot() -> void:
 	garden_panel.visible = true
 
 
-## Jardin : une ligne par arbre (toucher pour l'ouvrir, « Suppr. » deux fois pour le supprimer),
-## puis les boutons pour mettre un nouvel arbre en pot.
-func _show_garden() -> void:
+## Jardin d'exposition : tous les arbres à leur place, ombres actives ; seul l'arbre retravaillé est redessiné.
+func _enter_garden() -> void:
 	if _busy():
 		return
+	_clear_cut()
+	for i in garden.trees.size():
+		if not exhibit.nodes.has(garden.slots[i]) or garden.trees[i] == sim:
+			exhibit.show_tree(garden.slots[i], garden.trees[i])
+	if sim and not in_garden:
+		target += exhibit.slots[garden.slots[garden.current]]  # même vue : l'arbre a repris sa place
+	in_garden = true
+	_mode()
+	_garden_info()
+	goal_target = Vector3(0, 0.6, 0)
+	goal_dist = 9.0
+	gliding = true
+
+
+## Écran de travail de l'arbre posé sur l'emplacement s.
+func _work(s: int) -> void:
+	target -= exhibit.slots[s]  # l'arbre de travail est à l'origine
+	in_garden = false
+	_mode()
+	_open(garden.at(s))
+
+
+func _mode() -> void:
+	exhibit.visible = in_garden
+	for n in [wood_mi, leaves_mi, needles_mi, pot_mi, soil_mi, overlay]:
+		n.visible = not in_garden
+	panel.visible = not in_garden
+	gauges.visible = not in_garden
+	sun.shadow_enabled = in_garden  # ombres seulement à l'exposition (chauffe)
+	sun.directional_shadow_max_distance = 16.0 if in_garden else 3.0
+	max_dist = 14.0 if in_garden else 2.0
+	cam.near = 0.05 if in_garden else 0.005  # précision de profondeur sur toute la cour
+
+
+func _garden_info() -> void:
+	info.text = "Jardin · %d / %d arbres\ntoucher : travailler · appui long : déplacer" % [garden.trees.size(), Garden.SLOTS]
+
+
+## Emplacement sous le doigt (le pot ou l'arbre), -1 si aucun.
+func _slot_at(pos: Vector2) -> int:
+	var best := -1
+	var bd := 70.0 * ui_scale
+	for s in exhibit.slots.size():
+		var i := garden.at(s)
+		var p: Vector3 = exhibit.slots[s]
+		var q := p + Vector3(0, garden.trees[i].height() if i >= 0 and s != lifted else 0.25, 0)
+		if cam.is_position_behind(p) or cam.is_position_behind(q):
+			continue
+		var d := Geometry2D.get_closest_point_to_segment(pos, cam.unproject_position(p), cam.unproject_position(q)).distance_to(pos)
+		if d < bd:
+			bd = d
+			best = s
+	return best
+
+
+## Toucher dans le jardin : la caméra s'approche de l'arbre puis passe au travail ; un « + » propose un nouvel arbre.
+func _garden_tap(pos: Vector2) -> void:
+	var s := _slot_at(pos)
+	if s < 0:
+		return
+	var i := garden.at(s)
+	if i < 0:
+		_show_add(s)
+		return
+	var h := garden.trees[i].height()
+	goal_target = exhibit.slots[s] + Vector3(0, maxf(0.05, h * 0.45), 0)
+	goal_dist = maxf(0.35, h * 1.6)
+	gliding = true
+	pending_open = s
+
+
+## L'arbre soulevé suit le doigt, un peu au-dessus des tablettes.
+func _carry(pos: Vector2) -> void:
+	var o := cam.project_ray_origin(pos)
+	var d := cam.project_ray_normal(pos)
+	if d.y > -0.01:
+		return
+	exhibit.nodes[lifted].position = o + d * ((0.95 - o.y) / d.y)
+
+
+## Dépose l'arbre soulevé sur l'emplacement visé ; échange si la place est prise.
+func _drop(pos: Vector2) -> void:
+	var src := lifted
+	lifted = -1
+	var s := _slot_at(pos)
+	if s < 0 or s == src:
+		exhibit.place(src)
+		return
+	var b := garden.at(s)
+	garden.slots[garden.at(src)] = s
+	if b >= 0:
+		garden.slots[b] = src
+	exhibit.swap(src, s)
+	garden.save_index()
+
+
+func _show_add(s: int) -> void:
 	for c in garden_panel.get_children():
 		c.queue_free()
 	var box := VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	garden_panel.add_child(box)
-	var top := Control.new()
-	top.custom_minimum_size.y = 60 * ui_scale
-	box.add_child(top)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(scroll)
-	var list := VBoxContainer.new()
-	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(list)
-	for i in garden.trees.size():
-		var t := garden.trees[i]
-		var row := HBoxContainer.new()
-		list.add_child(row)
-		var age := (t.week - t.planted) / 52
-		var label := "%s · %d an%s · %d cm" % [garden.names[i], age, "s" if age > 1 else "", roundi(t.height() * 100.0)]
-		var open := _button(row, ("> " if i == garden.current else "") + label, func():
-			garden_panel.visible = false
-			_open(i))
-		open.size_flags_stretch_ratio = 4.0
-		var del := _button(row, "Suppr.", Callable())
-		del.pressed.connect(func():
-			if garden.trees.size() <= 1:
-				_say("Il faut garder au moins un arbre.")
-			elif del.text != "Sûr ?":
-				del.text = "Sûr ?"
-			else:
-				var was_open := i == garden.current
-				garden.remove(i)
-				if was_open:
-					_open(garden.current)
-				_show_garden())
-	var row2 := HBoxContainer.new()
-	box.add_child(row2)
 	for sp in [Species.ELM, Species.PINE, Species.MAPLE]:
-		_button(row2, "+ " + str(sp["name"]).split(" ")[0], func():
+		_button(box, "+ " + str(sp["name"]), func():
 			garden_panel.visible = false
-			garden.add(sp)
-			_open(garden.current))
-	var row3 := HBoxContainer.new()
-	box.add_child(row3)
-	_button(row3, "Fermer", func(): garden_panel.visible = false)
-	var bottom := Control.new()
-	bottom.custom_minimum_size.y = 40 * ui_scale
-	box.add_child(bottom)
+			garden.add(sp, s)
+			exhibit.show_tree(s, garden.trees[-1])
+			_garden_info())
+	_button(box, "Annuler", func(): garden_panel.visible = false)
 	garden_panel.visible = true
+
+
+## « Retirer » deux fois de suite : l'arbre ouvert quitte le jardin (son fichier est supprimé).
+func _remove() -> void:
+	if _busy():
+		return
+	if Time.get_ticks_msec() - remove_ms > 3000:
+		remove_ms = Time.get_ticks_msec()
+		_say("Toucher encore « Retirer » pour enlever définitivement cet arbre.")
+		return
+	remove_ms = 0
+	var s := garden.slots[garden.current]
+	exhibit.clear(s)
+	garden.remove(garden.current)
+	sim = null
+	target += exhibit.slots[s]
+	_enter_garden()
 
 
 func _button(parent: Control, text: String, cb: Callable, icon := "") -> Button:
@@ -449,8 +536,21 @@ func _process(delta: float) -> void:
 		var k := 1.0 - exp(-delta * 8.0)
 		target = target.lerp(goal_target, k)
 		dist = lerpf(dist, goal_dist, k)
+		if in_garden and pending_open < 0:  # retour au jardin : vue de trois quarts depuis l'entrée
+			yaw = lerp_angle(yaw, PI + 0.35, k)
+			pitch = lerpf(pitch, 0.6, k)
 		gliding = target.distance_to(goal_target) > 0.0005 or absf(dist - goal_dist) > 0.0005
 		_update_cam()
+		if not gliding and pending_open >= 0:
+			var s := pending_open
+			pending_open = -1
+			_work(s)
+	# appui long dans le jardin : on soulève l'arbre
+	if in_garden and lifted < 0 and touches.size() == 1 and not tap_moved and Time.get_ticks_msec() - press_ms > 450:
+		var s := _slot_at(tap_start)
+		if s >= 0 and garden.at(s) >= 0:
+			lifted = s
+			_carry(tap_start)
 	if task >= 0:
 		loader.rotation += delta * 4.0
 		if not WorkerThreadPool.is_task_completed(task):
@@ -645,11 +745,12 @@ func _input(ev: InputEvent) -> void:
 func _unhandled_input(ev: InputEvent) -> void:
 	if ev is InputEventScreenTouch:
 		if ev.pressed:
-			if panel.get_global_rect().has_point(ev.position):
+			if panel.visible and panel.get_global_rect().has_point(ev.position):
 				return
 			touches[ev.index] = ev.position
 			if touches.size() == 1:
 				tap_start = ev.position
+				press_ms = Time.get_ticks_msec()
 				tap_moved = false
 				# doigt posé sur le repère : on le fait glisser le long de la branche, ou on plie la branche ligaturée
 				# avec le fil : le rond se déplace le long de la branche ; attraper la branche au-delà du rond la plie
@@ -680,6 +781,12 @@ func _unhandled_input(ev: InputEvent) -> void:
 				mid = (p[0] + p[1]) * 0.5
 		elif touches.has(ev.index):
 			touches.erase(ev.index)
+			if in_garden and touches.is_empty():
+				if lifted >= 0:
+					_drop(ev.position)
+				elif not tap_moved:
+					_garden_tap(ev.position)
+				return
 			if dragging_bend and touches.is_empty():
 				dragging_bend = false
 				var ang := bend_q.get_angle()
@@ -713,7 +820,10 @@ func _unhandled_input(ev: InputEvent) -> void:
 		touches[ev.index] = ev.position
 		if ev.position.distance_to(tap_start) > 12.0 * ui_scale:
 			tap_moved = true
-		if touches.size() == 1 and dragging_bend:
+		if in_garden and lifted >= 0:
+			if touches.size() == 1:
+				_carry(ev.position)
+		elif touches.size() == 1 and dragging_bend:
 			# tirer une flèche : le bout de la branche se déplace le long de cet axe (rotation autour du point de pli)
 			var hp := _bend_handle()
 			var e: Vector3 = AXES[bend_axis]
@@ -731,7 +841,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 			_move_cut(ev.position)
 		elif touches.size() == 1 and tap_moved:
 			yaw -= ev.relative.x * 0.008
-			pitch = clampf(pitch + ev.relative.y * 0.006, -1.5, 1.5)  # dessus comme dessous
+			pitch = clampf(pitch + ev.relative.y * 0.006, 0.15 if in_garden else -1.5, 1.5)  # dessus comme dessous (pas sous le jardin)
 			gliding = false
 			_update_cam()
 		elif touches.size() == 2:
@@ -739,7 +849,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 			var p: Array = touches.values()
 			var m: Vector2 = (p[0] + p[1]) * 0.5
 			if pinch > 0.0 and d > 0.0:
-				dist = clampf(dist * pinch / d, MIN_DIST, 2.0)
+				dist = clampf(dist * pinch / d, MIN_DIST, max_dist)
 				# glisser à deux doigts : le point visé suit les doigts, dans le plan de l'écran
 				var px := dist * 2.0 * tan(deg_to_rad(cam.fov * 0.5)) / get_viewport().get_visible_rect().size.y
 				var dm := m - mid
@@ -754,7 +864,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 			dist = maxf(dist * 0.9, MIN_DIST)
 			_update_cam()
 		elif ev.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			dist = minf(dist * 1.1, 2.0)
+			dist = minf(dist * 1.1, max_dist)
 			_update_cam()
 
 
