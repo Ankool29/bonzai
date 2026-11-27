@@ -183,7 +183,7 @@ func _build_ui() -> void:
 	for c in ["font_pressed_color", "font_hover_pressed_color"]:
 		theme.set_color(c, "Button", INK)
 	theme.set_color("font_disabled_color", "Button", PAPER.darkened(0.5))
-	theme.set_constant("icon_max_width", "Button", int(72 * ui_scale))
+	theme.set_constant("icon_max_width", "Button", int(52 * ui_scale))
 	theme.set_stylebox("panel", "PanelContainer", _box(PAPER, WOOD_EDGE))
 	theme.set_color("font_color", "Label", INK)
 	var layer := CanvasLayer.new()
@@ -205,42 +205,56 @@ func _build_ui() -> void:
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(spacer)
-	panel = PanelContainer.new()
-	root.add_child(panel)
-	var box := VBoxContainer.new()
-	panel.add_child(box)
+	# Infos en haut, petites et translucides : l'arbre garde l'écran.
+	var top := PanelContainer.new()
+	top.add_theme_stylebox_override("panel", _box(Color(PAPER, 0.8), Color(WOOD_EDGE, 0.8), 2))
+	top.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(top)
+	root.move_child(top, 0)
+	var tbox := VBoxContainer.new()
+	top.add_child(tbox)
 	info = Label.new()
-	box.add_child(info)
+	info.add_theme_font_size_override("font_size", int(19 * ui_scale))
+	tbox.add_child(info)
 	var gauges := HBoxContainer.new()  # jauges de vigueur et de réserves
-	box.add_child(gauges)
+	tbox.add_child(gauges)
 	for k in 2:
 		var l := Label.new()
-		l.text = ["Vigueur", " Réserves"][k]
+		l.text = ["Vigueur ", "  Réserves "][k]
+		l.add_theme_font_size_override("font_size", int(17 * ui_scale))
 		gauges.add_child(l)
 		var bar := ProgressBar.new()
 		bar.max_value = 1.0
 		bar.show_percentage = false
-		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		bar.custom_minimum_size.y = 26 * ui_scale
-		bar.add_theme_stylebox_override("background", _box(INK, INK, 2))
-		bar.add_theme_stylebox_override("fill", _box([Color(0.84, 0.59, 0.24), Color(0.43, 0.67, 0.31)][k], INK, 2))
+		bar.custom_minimum_size = Vector2(110, 12) * ui_scale
+		bar.add_theme_stylebox_override("background", _box(INK, INK, 1))
+		bar.add_theme_stylebox_override("fill", _box([Color(0.84, 0.59, 0.24), Color(0.43, 0.67, 0.31)][k], INK, 1))
 		gauges.add_child(bar)
 		if k == 0:
 			vig_bar = bar
 		else:
 			res_bar = bar
-	# Onglets : une seule rangée d'outils à la fois, pour ne pas encombrer l'écran.
-	var tabs := HBoxContainer.new()
-	box.add_child(tabs)
+	# En bas, une seule rangée de petits boutons à icône : les onglets, puis les outils de l'onglet ouvert.
+	panel = PanelContainer.new()
+	root.add_child(panel)
+	var box := VBoxContainer.new()
+	panel.add_child(box)
+	var row := HBoxContainer.new()
+	box.add_child(row)
 	var group := ButtonGroup.new()
 	for k in 4:
-		var t := _button(tabs, ["Temps", "Taille", "Fil", "Arbre"][k], _tab.bind(k), ["temps", "taille", "fil", "arbre"][k])
+		var t := _button(row, ["Temps", "Taille", "Fil", "Arbre"][k], _tab.bind(k), ["temps", "taille", "fil", "arbre"][k])
 		t.toggle_mode = true
 		t.button_group = group
 		t.button_pressed = k == 0
+		t.size_flags_horizontal = Control.SIZE_FILL
+	row.add_child(VSeparator.new())
+	for k in 4:
 		var page := HBoxContainer.new()
-		box.add_child(page)
+		page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(page)
 		pages.append(page)
 	_button(pages[0], "+1 semaine", func(): _advance(1), "semaine")
 	_button(pages[0], "+1 saison", func(): _advance(13), "saison")
@@ -251,6 +265,7 @@ func _build_ui() -> void:
 		tool_btns.append(b)
 	cut_btn = _button(pages[1], "Couper", _cut, "couper")
 	wire_btn = _button(pages[2], "Ligaturer", _act, "ligaturer")
+	wire_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	for b in [cut_btn, wire_btn]:  # boutons d'action en orange
 		b.add_theme_stylebox_override("normal", _box(ORANGE, GOLD))
 		b.add_theme_stylebox_override("hover", _box(ORANGE, GOLD))
@@ -271,7 +286,7 @@ func _build_ui() -> void:
 	loader.visible = false
 	layer.add_child(loader)
 	var bottom := Control.new()  # marge pour la barre de gestes du téléphone
-	bottom.custom_minimum_size.y = 40 * ui_scale
+	bottom.custom_minimum_size.y = 16 * ui_scale
 	box.add_child(bottom)
 	garden_panel = PanelContainer.new()  # liste des arbres, par-dessus tout
 	garden_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -386,14 +401,15 @@ func _show_garden() -> void:
 func _button(parent: Control, text: String, cb: Callable, icon := "") -> Button:
 	var b := Button.new()
 	b.text = text
-	if icon != "":  # icône PixelLab au-dessus du texte
+	if icon != "":  # petit bouton : l'icône PixelLab seule, le nom reste en info-bulle
 		b.icon = load("res://ui/icons/%s.png" % icon)
 		b.expand_icon = true
 		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+		b.tooltip_text = text
+		b.text = ""
 	b.clip_text = true  # jamais plus large que l'écran
 	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	b.custom_minimum_size.y = (130 if icon != "" else 90) * ui_scale
+	b.custom_minimum_size = Vector2(72, 72) * ui_scale if icon != "" else Vector2(0, 90) * ui_scale
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if cb.is_valid():
 		b.pressed.connect(cb)
@@ -511,7 +527,9 @@ func _update_act() -> void:
 		return
 	cut_btn.disabled = cut_k < 0
 	wire_btn.disabled = cut_k < 0
-	wire_btn.text = "Déligaturer" if cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0 else "Ligaturer"
+	var wired := cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0
+	wire_btn.icon = load("res://ui/icons/%s.png" % ("couper" if wired else "ligaturer"))  # couper le fil
+	wire_btn.tooltip_text = "Déligaturer" if wired else "Ligaturer"
 
 
 ## Onglet Fil : ligaturer ou déligaturer la branche sélectionnée.
@@ -600,7 +618,6 @@ func _info(time: float) -> void:
 		season = "automne"
 	var extra := "calcul %d ms" % calc_ms if calc_ms > 0 else "%d segments" % sim.segs.size()
 	var v := sim.last_vigor
-	var vig := "forte" if v >= 2.0 else ("bonne" if v >= 1.0 else ("faible" if v >= 0.5 else "très faible"))
 	if cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0:
 		extra += " · " + sim.wire_state(sim.segs[axis[cut_k]].wire)
 	vig_bar.value = clampf(v / 2.5, 0.0, 1.0)
@@ -610,8 +627,8 @@ func _info(time: float) -> void:
 		state = "\nl'arbre est mort"
 	elif sim.segs[0].count > 0.85 * sim.capacity:
 		state = "\nlimite de rameaux du jeu atteinte : éclaircir pour relancer"
-	info.text = "%s · année %d · semaine %d · %s · vigueur %s\nhauteur %d cm · pot %d L · %s%s" % [
-		garden.names[garden.current], wk / 52 + 1, w + 1, season, vig, roundi(sim.height() * 100.0),
+	info.text = "%s · an %d · sem. %d · %s\n%d cm · pot %d L · %s%s" % [
+		garden.names[garden.current], wk / 52 + 1, w + 1, season, roundi(sim.height() * 100.0),
 		roundi(sim.pot_volume), extra, state]
 
 

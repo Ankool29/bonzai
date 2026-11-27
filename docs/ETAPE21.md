@@ -5,4 +5,6 @@
 - Thème bois et papier : boutons bois à bordure épaisse, bouton ou onglet enfoncé en papier à liseré doré,
   boutons d'action (Couper, Ligaturer) en orange ; bandeau d'info sur papier.
 - Vigueur et réserves en jauges (vigueur / 2,5 et réserves / 1,5, plafonnées à 1).
-- Chaque bouton : icône au-dessus du texte.
+- Révisé : infos en haut à gauche (petite étiquette translucide, deux lignes, jauges fines) ; en bas une seule
+  rangée de petits boutons à icône seule (72 px) : 4 onglets, séparateur, outils de l'onglet ouvert ; le nom
+  reste en info-bulle ; « Déligaturer » prend l'icône « couper ».
