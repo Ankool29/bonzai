@@ -25,7 +25,10 @@ var tool_btns: Array[Button] = []
 var dragging_cut := false
 var dragging_bend := false      # outil fil : on plie la branche ligaturée en glissant depuis le repère
 var bend_q := Quaternion.IDENTITY
-var bend_b0 := Vector2.ZERO     # position à l'écran de la poignée au début du geste
+var bend_b0 := Vector2.ZERO     # position du doigt au début du geste
+var bend_axis := 0              # flèche tirée : 0 x (rouge), 1 y (vert), 2 z (bleu)
+const AXES := [Vector3.RIGHT, Vector3.UP, Vector3.BACK]
+const AXIS_COLS := [Color(0.95, 0.25, 0.2), Color(0.3, 0.85, 0.3), Color(0.3, 0.5, 1.0)]
 var overlay := MeshInstance3D.new()  # repère de coupe et bourgeons
 var msg: Label
 var msg_until := 0
@@ -574,8 +577,19 @@ func _unhandled_input(ev: InputEvent) -> void:
 				bend_q = Quaternion.IDENTITY
 				dragging_bend = false
 				if tool == 3 and cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0:
-					bend_b0 = cam.unproject_position(_bend_handle())
-					dragging_bend = bend_b0.distance_to(ev.position) < near
+					# la flèche la plus proche du doigt (de part et d'autre de la poignée)
+					var hp := _bend_handle()
+					var l := _arrow_len(hp)
+					var best := near
+					for k in 3:
+						var a := cam.unproject_position(hp - AXES[k] * l)
+						var b := cam.unproject_position(hp + AXES[k] * l)
+						var d := Geometry2D.get_closest_point_to_segment(ev.position, a, b).distance_to(ev.position)
+						if d < best:
+							best = d
+							bend_axis = k
+							dragging_bend = true
+					bend_b0 = ev.position
 				dragging_cut = not dragging_bend and cut_k >= 0 and _cut_screen_pos().distance_to(ev.position) < near
 			else:
 				tap_moved = true
@@ -618,10 +632,18 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if ev.position.distance_to(tap_start) > 12.0 * ui_scale:
 			tap_moved = true
 		if touches.size() == 1 and dragging_bend:
-			# la branche tourne autour du rond, dans le plan de l'écran, pour suivre le doigt
-			var ps := _cut_screen_pos()
-			var ang := (bend_b0 - ps).angle_to(ev.position - ps)  # positif : sens horaire à l'écran
-			bend_q = Quaternion(-cam.global_transform.basis.z, ang)
+			# tirer une flèche : le bout de la branche se déplace le long de cet axe (rotation autour du point de pli)
+			var hp := _bend_handle()
+			var e: Vector3 = AXES[bend_axis]
+			var sd := cam.unproject_position(hp + e * _arrow_len(hp)) - cam.unproject_position(hp)
+			var px := cam.global_position.distance_to(hp) * 2.0 * tan(deg_to_rad(cam.fov * 0.5)) \
+					/ get_viewport().get_visible_rect().size.y
+			var disp: float = (ev.position - bend_b0).dot(sd.normalized()) * px
+			var arm := hp - sim.segs[axis[cut_k]].start
+			var lever := (arm - e * arm.dot(e)).length()
+			var ax := arm.cross(e)
+			bend_q = Quaternion(ax.normalized(), atan2(disp, maxf(lever, 0.001))) if ax.length() > 0.00001 \
+					else Quaternion.IDENTITY
 			_draw_overlay()
 		elif touches.size() == 1 and dragging_cut:
 			_move_cut(ev.position)
@@ -766,6 +788,8 @@ func _draw_overlay() -> void:
 				if g[3] >= 0:
 					hp = g[2] + g[0] * (hp - g[2])
 			_dot(im, hp)
+			if not dragging_bend:
+				_arrows(im, hp)
 
 
 ## Pliage tel que la simulation le fera : [demi-rotation, pivot 1, pivot 2 (déjà tourné), entre-nœud 2 ou -1].
@@ -780,6 +804,35 @@ func _ghost_parts() -> Array:
 	var p0 := sim.segs[i0].start
 	var p1 := (p0 + half * (sim.segs[i1].start - p0)) if i1 >= 0 else p0
 	return [half, p0, p1, i1]
+
+
+## Longueur des flèches : constante à l'écran.
+func _arrow_len(p: Vector3) -> float:
+	return cam.global_position.distance_to(p) * 0.07
+
+
+## Croix de trois flèches (x rouge, y vert, z bleu) à la poignée, avec une pointe à chaque bout.
+func _arrows(im: ImmediateMesh, p: Vector3) -> void:
+	var l := _arrow_len(p)
+	var view := -cam.global_transform.basis.z
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in 3:
+		var e: Vector3 = AXES[k]
+		var col: Color = AXIS_COLS[k]
+		var w := view.cross(e)
+		if w.length() < 0.2:
+			continue  # flèche vue de face : on ne peut pas la tirer
+		w = w.normalized() * l * 0.04
+		for v in [p - e * l - w, p - e * l + w, p + e * l + w, p - e * l - w, p + e * l + w, p + e * l - w]:
+			im.surface_set_color(col)
+			im.surface_add_vertex(v)
+		for sgn in [-1.0, 1.0]:  # pointes
+			var tip: Vector3 = p + e * l * 1.25 * sgn
+			var base: Vector3 = p + e * l * 0.95 * sgn
+			for v in [tip, base + w * 4.0, base - w * 4.0]:
+				im.surface_set_color(col)
+				im.surface_add_vertex(v)
+	im.surface_end()
 
 
 ## Poignée de pliage : au bout de la partie ligaturée qui suit le point de pli.
