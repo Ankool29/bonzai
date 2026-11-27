@@ -93,6 +93,7 @@ func _ready() -> void:
 	om.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	om.vertex_color_use_as_albedo = true
 	om.no_depth_test = true
+	om.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA  # branche fantôme translucide
 	overlay.material_override = om
 	overlay.mesh = ImmediateMesh.new()
 	world.add_child(overlay)
@@ -541,10 +542,14 @@ func _unhandled_input(ev: InputEvent) -> void:
 				tap_start = ev.position
 				tap_moved = false
 				# doigt posé sur le repère : on le fait glisser le long de la branche, ou on plie la branche ligaturée
+				# avec le fil : le rond se déplace le long de la branche ; attraper la branche au-delà du rond la plie
 				var on_mark := cut_k >= 0 and _cut_screen_pos().distance_to(ev.position) < 45.0 * ui_scale
-				dragging_bend = on_mark and tool == 3 and sim.segs[axis[cut_k]].wire > 0
-				dragging_cut = on_mark and not dragging_bend
+				dragging_cut = on_mark
+				dragging_bend = false
 				bend_q = Quaternion.IDENTITY
+				if not on_mark and tool == 3 and cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0:
+					var g := _pick(ev.position)
+					dragging_bend = g >= 0 and g in sim.subtree(axis[cut_k])
 			else:
 				tap_moved = true
 				pinch = _pinch_len()
@@ -556,7 +561,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 				dragging_bend = false
 				var ang := bend_q.get_angle()
 				if ang > 0.01:
-					var m := sim.bend(sim.segs[axis[cut_k]].wire, bend_q.get_axis(), ang)
+					var m := sim.bend(sim.segs[axis[cut_k]].wire, axis[cut_k], bend_q.get_axis(), ang)
 					if m != "":
 						_say(m)
 					garden.save_tree(garden.current)
@@ -586,14 +591,10 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if ev.position.distance_to(tap_start) > 12.0 * ui_scale:
 			tap_moved = true
 		if touches.size() == 1 and dragging_bend:
-			# glisser vers un côté de l'écran plie la branche de ce côté
-			var bas := cam.global_transform.basis
-			var drag: Vector3 = bas.x * ev.relative.x - bas.y * ev.relative.y
-			var ch := sim.wire_segs(sim.segs[axis[cut_k]].wire)
-			var bdir := (sim.segs[ch[-1]].end - sim.segs[ch[0]].start).normalized()
-			var ax := bdir.cross(drag)
-			if ax.length() > 0.0001:
-				bend_q = Quaternion(ax.normalized(), ev.relative.length() * 0.006) * bend_q
+			# la branche tourne autour du rond, dans le plan de l'écran, pour suivre le doigt
+			var ps := _cut_screen_pos()
+			var ang := (tap_start - ps).angle_to(ev.position - ps)  # positif : sens horaire à l'écran
+			bend_q = Quaternion(-cam.global_transform.basis.z, ang)
 			_draw_overlay()
 		elif touches.size() == 1 and dragging_cut:
 			_move_cut(ev.position)
@@ -702,19 +703,18 @@ func _draw_overlay() -> void:
 	var a := d.cross(Vector3.UP if absf(d.y) < 0.9 else Vector3.RIGHT).normalized()
 	var b := d.cross(a)
 	var r := c.radius + 0.004
-	for v in [a, b]:
-		im.surface_set_color(Color(1.0, 0.85, 0.1))
-		im.surface_add_vertex(c.start - v * r)
-		im.surface_set_color(Color(1.0, 0.85, 0.1))
-		im.surface_add_vertex(c.start + v * r)
-	if dragging_bend:  # aperçu du pliage (orange), pivot à la base du fil
-		var ch := sim.wire_segs(c.wire)
-		var pivot := sim.segs[ch[0]].start
-		for k in sim.subtree(ch[0]):
-			var s := sim.segs[k]
-			for p in [s.start, s.end]:
-				im.surface_set_color(Color(1.0, 0.55, 0.1))
-				im.surface_add_vertex(pivot + bend_q * (p - pivot))
+	if tool == 3:  # fil : un rond autour de la branche, là où elle pliera
+		for k in 16:
+			for q in [k, k + 1]:
+				var u := TAU * q / 16.0
+				im.surface_set_color(Color(1.0, 0.85, 0.1))
+				im.surface_add_vertex(c.start + (a * cos(u) + b * sin(u)) * r)
+	else:
+		for v in [a, b]:
+			im.surface_set_color(Color(1.0, 0.85, 0.1))
+			im.surface_add_vertex(c.start - v * r)
+			im.surface_set_color(Color(1.0, 0.85, 0.1))
+			im.surface_add_vertex(c.start + v * r)
 	if dragging_cut:
 		for k in sim.subtree(axis[cut_k]):
 			var s := sim.segs[k]
@@ -732,6 +732,43 @@ func _draw_overlay() -> void:
 		im.surface_add_vertex(s.end)
 		im.surface_set_color(col)
 		im.surface_add_vertex(s.end + s.lat_dir * (0.012 if below else 0.006))
+	im.surface_end()
+	if dragging_bend:
+		_draw_ghost(im)
+
+
+## Branche fantôme pendant le pliage : la partie au-delà du rond, pliée comme le fera la simulation (moitié
+## de l'angle à la base de l'entre-nœud du rond, moitié au suivant), en rubans orange translucides.
+func _draw_ghost(im: ImmediateMesh) -> void:
+	var i0 := axis[cut_k]
+	var i1 := sim.segs[i0].main_child
+	if i1 >= 0 and sim.segs[i1].wire != sim.segs[i0].wire:
+		i1 = -1
+	var half := Quaternion.IDENTITY
+	if bend_q.get_angle() > 0.0001:
+		half = Quaternion(bend_q.get_axis(), bend_q.get_angle() * (0.5 if i1 >= 0 else 1.0))
+	var p0 := sim.segs[i0].start
+	var p1 := (p0 + half * (sim.segs[i1].start - p0)) if i1 >= 0 else p0
+	var second := {}
+	if i1 >= 0:
+		for k in sim.subtree(i1):
+			second[k] = true
+	var view := -cam.global_transform.basis.z
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in sim.subtree(i0):
+		var s := sim.segs[k]
+		if s.dry:
+			continue
+		var e := [s.start, s.end]
+		for j in 2:
+			e[j] = p0 + half * (e[j] - p0)
+			if second.has(k):
+				e[j] = p1 + half * (e[j] - p1)
+		var side := view.cross(e[1] - e[0]).normalized() * maxf(s.radius, 0.0007)
+		var col := Color(1.0, 0.55, 0.1, 0.55)
+		for v in [e[0] - side, e[0] + side, e[1] + side, e[0] - side, e[1] + side, e[1] - side]:
+			im.surface_set_color(col)
+			im.surface_add_vertex(v)
 	im.surface_end()
 
 

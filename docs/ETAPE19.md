@@ -6,8 +6,10 @@ Meislik (branche fêlée fragile), Eastern Leaf (raphia).
 
 - Outil « Fil » : sélectionner un entre-nœud, « Ligaturer » pose un fil sur 6 entre-nœuds de l'axe (aluminium,
   cuivre pour le pin), d'un tiers du diamètre, en spirale à 45°. Raphia automatique au-dessus de 5 mm.
-- Plier : glisser depuis le repère jaune ; aperçu orange ; la courbure se répartit sur les entre-nœuds du fil.
-- Limite : 60° par entre-nœud pour un rameau de 1,5 mm, inversement proportionnelle au rayon (entre 6° et 120°),
+- Plier (révisé) : un rond jaune marque le point de pli, on le fait glisser le long de la branche ; on attrape la
+  branche au-delà du rond et elle tourne autour, dans le plan de l'écran, pour suivre le doigt ; branche fantôme
+  orange translucide pendant le geste ; le pli se répartit sur l'entre-nœud du rond et le suivant.
+- Limite (à l'endroit du pli) : 60° par entre-nœud pour un rameau de 1,5 mm, inversement proportionnelle au rayon (entre 6° et 120°),
   ×1,3 pin, ×1,5 raphia. Au-delà : fêlée (1 chance sur 2 de mourir à la fin de l'été) ; au-delà de 125 % : casse.
 - Prise : 12 semaines de pousse (40 pour le pin) × √(rayon / 1,5 mm) entre 0,7 et 3. Retiré avant : la branche
   revient de la part non prise.
