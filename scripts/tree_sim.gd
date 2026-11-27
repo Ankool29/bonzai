@@ -127,6 +127,8 @@ var layout := 0               # change quand des segments sont retirés (les ind
 var fallen: Array = []        # rameaux morts tombés pendant la période : [début, fin, rayon, séchage, chute]
 var rng := RandomNumberGenerator.new()
 var planted := 10             # semaine de mise en pot
+var root := RootSim.new()     # charpente racinaire (étape 23a), sauvegardée à part
+const ROOT_WEEKS := [14, 22, 36]  # poussées de racines : printemps, début et fin d'été
 
 
 ## start_week : date du jardin (10 = début mars de l'année 1).
@@ -148,6 +150,9 @@ func reset(seed_value: int = 1, species: Dictionary = Species.ELM, start_week :=
 	s.radius = tip_radius
 	_set_lateral(s, Vector3.UP)
 	segs.append(s)
+	root = RootSim.new()
+	root.setup(species, pot_volume)
+	root.plant(seed_value)
 
 
 ## Sauvegarde : toutes les variables de l'arbre (fiche espèce comprise) et des segments, colonne par colonne,
@@ -155,7 +160,7 @@ func reset(seed_value: int = 1, species: Dictionary = Species.ELM, start_week :=
 func to_data() -> Dictionary:
 	var d := {}
 	for p in get_property_list():
-		if p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE and p.name != "segs" and p.name != "rng" and p.name != "fallen":
+		if p.usage & PROPERTY_USAGE_SCRIPT_VARIABLE and p.name != "segs" and p.name != "rng" and p.name != "fallen" and p.name != "root":
 			d[p.name] = get(p.name)
 	d["rng_seed"] = rng.seed
 	d["rng_state"] = rng.state
@@ -169,17 +174,20 @@ func to_data() -> Dictionary:
 				cols[p.name] = col
 	d["segs"] = cols
 	d["count"] = segs.size()
+	d["root"] = root.to_data()
 	return d
 
 
 func from_data(d: Dictionary) -> void:
 	for k in d:
-		if k != "segs" and k != "count" and k != "rng_seed" and k != "rng_state":
+		if k != "segs" and k != "count" and k != "rng_seed" and k != "rng_state" and k != "root":
 			set(k, d[k])
 	capacity = maxi(capacity, 6000)  # les arbres plantés avant l'étape 15 avaient 1500 ou 3000
 	# L'apparence suit toujours la fiche espèce actuelle (un réglage graphique s'applique aussi aux anciens arbres).
+	var species: Dictionary = Species.ELM
 	for sp in [Species.ELM, Species.PINE, Species.MAPLE]:
 		if sp["name"] == name:
+			species = sp
 			for k in ["bud_size", "bud_color", "bark_colors", "young_color", "autumn_color", "foliage_size"]:
 				if sp.has(k):
 					set(k, sp[k])
@@ -196,6 +204,43 @@ func from_data(d: Dictionary) -> void:
 		for k in cols:
 			sg.set(k, cols[k][i])
 		segs.append(sg)
+	root = RootSim.new()
+	root.setup(species, pot_volume)
+	if d.has("root"):
+		root.from_data(d["root"])
+	else:
+		_grow_roots_for_old_tree(d["rng_seed"])
+
+
+## Arbre sauvegardé avant l'étape 23a : charpente qui remplit ce que demandent ses racines, épaisseurs
+## données d'un coup (la somme au collet suit la section du tronc).
+func _grow_roots_for_old_tree(seed_value: int) -> void:
+	root.plant(seed_value)
+	for k in 40:
+		var n := root.size()
+		root.pulse(roots)
+		if root.size() == n:
+			break
+	_compute_shadow()
+	_basipetal()
+	var sl := _sector_light()
+	var tot := 0.0
+	for x in sl:
+		tot += x
+	if tot > 0.0:
+		var r := segs[0].radius
+		root.thicken(sl, PI * r * r / tot, r)
+
+
+## Lumière captée par le houppier, en 8 secteurs autour du tronc (côté de chaque bourgeon).
+func _sector_light() -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(RootSim.SECTORS)
+	for s in segs:
+		var q := s.q_term + s.q_lat
+		if q > 0.0:
+			out[root.sector(s.end)] += q
+	return out
 
 
 ## Début d'une période animée : on note les épaisseurs et on vide la liste des rameaux tombés.
@@ -216,6 +261,8 @@ func step_week() -> void:
 		_dieback()
 	if w == 0:
 		_end_of_year()
+	if ROOT_WEEKS.has(w):
+		root.pulse(roots)
 	_wires_week(w)
 
 
@@ -361,6 +408,8 @@ func health() -> float:
 func repot(volume: float, cut: float) -> String:
 	pot_volume = volume
 	roots = minf(roots * (1.0 - cut), volume * ROOTS_PER_LITRE)
+	root.set_pot(volume)
+	root.prune_far(cut)
 	reserve *= 1.0 - cut * 0.5  # une part des réserves est dans les racines
 	var w := week % 52
 	if w >= 6 and w <= 14:
@@ -503,6 +552,7 @@ func _end_of_year() -> void:
 	# qu'il porte (loi de Pressler). Le bas du tronc, qui porte tout, épaissit le plus : conicité continue,
 	# et le tronc continue de grossir même après une taille. Quand le pot est plein, les racines ne nourrissent
 	# qu'une part de la couronne : le bois produit diminue d'autant (petit pot = tronc qui grossit peu).
+	root.thicken(_sector_light(), ring_area * leaf_area * minf(1.0, roots / maxf(segs[0].light, 0.01)), segs[0].radius)
 	var rf := minf(1.0, roots / maxf(segs[0].light, 0.01))
 	for s in segs:
 		if not s.dry:

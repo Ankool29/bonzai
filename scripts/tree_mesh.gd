@@ -136,7 +136,7 @@ func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 		if s.wound_r > 0.0:
 			_wound(s)
 	if n > 0:
-		_nebari()
+		_roots()
 	_fallen()
 	return [_wood_mesh(), _leaf_mesh(), _needle_mesh()]
 
@@ -388,35 +388,44 @@ func _disc(c: Vector3, n: Vector3, r: float, col: Color) -> void:
 
 
 ## Racines de surface provisoires, à la taille du tronc (en attendant les racines simulées).
-func _nebari() -> void:
-	sides = SIDES
-	# Racines de surface : 4 à 7, qui rayonnent depuis l'évasement du tronc et s'enfoncent dans la terre ;
-	# plus longues chez l'érable. Elles suivent l'épaississement du tronc.
-	var r := sim.segs[0].radius
-	var n := 4 + int(absf(sin(sim.segs[0].lat_dir.x * 91.7 + sim.planted)) * 40.0) % 4
-	var l := r * (2.5 + 1.5 * (1.4 if sim.leaf_shape == 1 else 1.0))
-	l = maxf(0.0, minf(l, 0.1 * pow(sim.pot_volume / 8.0, 1.0 / 3.0) - r * 0.7))  # restent dans le pot (11 cm de demi-largeur à 8 L)
-	var a0 := Vector4(-1000.0, 1.0, _ratio(sim.segs[0]), -1.0)
-	for k in n:
-		var ang := k * TAU / n + 0.5 * sin(k * 7.1)
-		var prev := -1
-		var pc := Vector3.ZERO
-		var d := Vector3.ZERO
-		for q in 7:
-			var t := q / 6.0
-			var a2 := ang + 0.25 * sin(k * 3.3 + t * 4.0)
-			var dr := Vector3(cos(a2), 0.0, sin(a2))
-			var c := dr * (r * 0.7 + l * t) + Vector3.UP * (r * 0.5 * pow(1.0 - t, 2.0) - 0.003 * t)
-			var rr := r * 0.55 * pow(1.0 - t, 0.9) + 0.0008
-			d = dr if q == 0 else (c - pc).normalized()
-			var cur := _ring(c, d, Vector3.UP, rr, t * 0.02, OLD, k * 1.3, a0, Vector4.ZERO)
-			if prev < 0:
-				_cap(cur, c - d * rr * 0.5, false)
-			else:
-				_join(prev, cur)
+## Racines qui dépassent de la terre (étape 23a, RootSim) : chaque racine suit son prolongement le plus gros,
+## en un tube dont l'épaisseur passe en douceur d'un entre-nœud à l'autre ; elle s'arrête un entre-nœud
+## après avoir plongé sous la terre. Le reste de la charpente, enterré, n'est pas dessiné.
+func _roots() -> void:
+	var rs := sim.root
+	var n := rs.size()
+	var cont := PackedInt32Array()
+	cont.resize(n)
+	cont.fill(-1)
+	for i in n:
+		var p := rs.par[i]
+		if p >= 0 and (cont[p] < 0 or rs.rad[i] > rs.rad[cont[p]]):
+			cont[p] = i
+	var a0 := Vector4(-1000.0, 1.0, 1.0, -1.0)
+	for i in n:
+		var p := rs.par[i]
+		if (p >= 0 and cont[p] == i) or rs.p0[i].y + rs.rad[i] < -0.001:
+			continue  # prolongement d'un axe, ou départ enterré
+		sides = 6 if rs.rad[i] < 0.0015 else SIDES
+		var d := rs.dir[i]
+		var prev := _ring(rs.p0[i], d, _perp(d), rs.rad[i], 0.0, OLD, i * 1.3, a0, Vector4.ZERO)
+		_cap(prev, rs.p0[i] - d * rs.rad[i] * 0.5, false)
+		var v := 0.0
+		var j := i
+		var last := rs.p0[i]
+		while j >= 0:
+			var nx := cont[j]
+			var r: float = (rs.rad[j] + rs.rad[nx]) * 0.5 if nx >= 0 else rs.rad[j] * 0.7
+			d = rs.dir[j]
+			v += RootSim.RI
+			var cur := _ring(rs.p1[j], d, _perp(d), r, v, OLD, i * 1.3, a0, Vector4.ZERO)
+			_join(prev, cur)
 			prev = cur
-			pc = c
-		_cap(prev, pc + d * 0.002, true)
+			last = rs.p1[j]
+			if rs.p1[j].y + r < -0.001:
+				break  # la racine a plongé
+			j = nx
+		_cap(prev, last + d * 0.002, true)
 
 
 func _perp(d: Vector3) -> Vector3:

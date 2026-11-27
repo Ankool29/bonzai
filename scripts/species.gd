@@ -29,6 +29,12 @@ const ELM := {
 	"backbud_chance": 0.6,
 	"capacity": 6000,
 	"max_sprouts": 4,
+	# Racines (étape 23a) — orme : 7 racines primaires, secteurs marqués.
+	"root_n": 7,
+	"root_tap": 0,
+	"root_dip": 8.0,
+	"root_branch": 0.35,
+	"root_mix": 0.25,
 	"flushes": {14: 1.0, 22: 0.7, 30: 0.4},  # printemps, début et fin d'été, de plus en plus faibles
 	"leaf_shape": 0,
 	"young_color": Color(0.55, 0.47, 0.38),
@@ -66,6 +72,12 @@ const PINE := {
 	"backbud_chance": 0.5,  # bourgeons d'aiguilles, en saison (voir prune)
 	"capacity": 6000,
 	"max_sprouts": 0,
+	# Racines (étape 23a) — pin : pivot et 4 latérales, peu ramifiées.
+	"root_n": 4,
+	"root_tap": 1,
+	"root_dip": 12.0,
+	"root_branch": 0.25,
+	"root_mix": 0.4,
 	"flushes": {16: 1.0, 27: 0.3},
 	"preformed": 0,
 	"spur_len": 0.8,
@@ -116,6 +128,12 @@ const MAPLE := {
 	"backbud_chance": 0.5,
 	"capacity": 6000,
 	"max_sprouts": 2,
+	# Racines (étape 23a) — érable : nombreuses racines superficielles, système intégré.
+	"root_n": 9,
+	"root_tap": 0,
+	"root_dip": 5.0,
+	"root_branch": 0.45,
+	"root_mix": 0.6,
 	"flushes": {14: 1.0, 24: 0.5},
 	"bud_color": Color(0.62, 0.16, 0.12),
 	"bud_size": 0.0013,
