@@ -114,7 +114,7 @@ var roots := 1.0              # ce que les racines peuvent alimenter ; suivent l
 var pot_volume := 8.0         # litres
 var low_years := 0            # années de suite à bout de réserves
 var last_vigor := 0.0         # vigueur moyenne des pousses de la dernière poussée
-# Ligature (étape 19) : id -> {need, done, over, angle, raffia, bends: [[axe, angle]...]}
+# Ligature (étape 19) : id -> {need, done, over, at (angle plié par position), raffia, bends: [[axe, angle, position]...]}
 var wires := {}
 var next_wire := 1
 const WIRE_SEGS := 6            # entre-nœuds couverts par un fil
@@ -225,7 +225,7 @@ func add_wire(i: int) -> String:
 	var r := segs[i].radius
 	var pliant := whorl > 0  # pin : bois souple, mais prend la forme lentement
 	wires[id] = {"need": (40.0 if pliant else 12.0) * clampf(sqrt(r / 0.0015), 0.7, 3.0), "done": 0.0,
-			"over": 0, "angle": 0.0, "raffia": r > 0.0025, "bends": []}
+			"over": 0, "at": {}, "raffia": r > 0.0025, "bends": []}
 	var k := i
 	for n in WIRE_SEGS:
 		if k < 0 or segs[k].dry or segs[k].wire > 0:
@@ -254,7 +254,9 @@ func remove_wire(id: int) -> String:
 	if back > 0.0 and not ch.is_empty():
 		var bends: Array = w["bends"]
 		for b in range(bends.size() - 1, -1, -1):
-			_bend_chain(ch, bends[b][0], -bends[b][1] * back)
+			var bd: Array = bends[b]
+			var part: Array = ch if bd.size() < 3 else ch.slice(bd[2], mini(bd[2] + 2, ch.size()))
+			_bend_chain(part, bd[0], -bd[1] * back)
 	for i in ch:
 		segs[i].wire = 0
 	wires.erase(id)
@@ -265,39 +267,42 @@ func remove_wire(id: int) -> String:
 	return "Fil retiré : la branche garde sa forme."
 
 
-## Plie la branche ligaturée : angle (radians) autour de l'axe donné, réparti sur les entre-nœuds du fil.
-## Au-delà de la limite de la branche, elle se fêle ; bien au-delà, elle casse.
-func bend(id: int, axis: Vector3, angle: float) -> String:
+## Plie la branche ligaturée à la base de l'entre-nœud i : angle (radians) autour de l'axe donné, réparti sur
+## cet entre-nœud et le suivant. Au-delà de la limite à cet endroit, la branche se fêle ; bien au-delà, elle casse.
+func bend(id: int, i: int, axis: Vector3, angle: float) -> String:
 	var ch := wire_segs(id)
-	if ch.is_empty() or absf(angle) < 0.001:
+	var k := ch.find(i)
+	if k < 0 or absf(angle) < 0.001:
 		return ""
+	var used: Array = ch.slice(k, mini(k + 2, ch.size()))
 	var w: Dictionary = wires[id]
-	var r := segs[ch[0]].radius
+	if not w.has("at"):
+		w["at"] = {}
 	# rameau de 1,5 mm : 60° par entre-nœud ; plus épais, beaucoup moins ; pin plus souple ; raphia +50 %
-	var lim := deg_to_rad(60.0) * clampf(0.0015 / r, 0.1, 2.0) * ch.size()
+	var lim := deg_to_rad(60.0) * clampf(0.0015 / segs[i].radius, 0.1, 2.0) * used.size()
 	lim *= (1.3 if whorl > 0 else 1.0) * (1.5 if w["raffia"] else 1.0)
-	var total: float = w["angle"] + absf(angle)
-	if total > lim * 1.25 and ch[0] > 0:
-		for i in ch:
-			segs[i].wire = 0
+	var total: float = w["at"].get(k, 0.0) + absf(angle)
+	if total > lim * 1.25 and i > 0:
+		for j in ch:
+			segs[j].wire = 0
 		wires.erase(id)
-		prune(ch[0], true)
+		prune(i, true)
 		return "Crac ! La branche a cassé."
-	_bend_chain(ch, axis, angle)
-	w["angle"] = total
-	w["bends"].append([axis, angle])
+	_bend_chain(used, axis, angle)
+	w["at"][k] = total
+	w["bends"].append([axis, angle, k])
 	if total > lim:
-		for i in ch:
-			segs[i].crack = true
+		for j in used:
+			segs[j].crack = true
 		return "La branche s'est fêlée : elle risque de dépérir."
 	if total > lim * 0.8:
-		return "La branche approche de sa limite."
+		return "La branche approche de sa limite à cet endroit."
 	return ""
 
 
 ## Fait tourner chaque entre-nœud de la chaîne (et tout ce qu'il porte) d'une part égale de l'angle,
 ## autour de sa base : la courbure se répartit le long du fil.
-func _bend_chain(ch: Array[int], axis: Vector3, angle: float) -> void:
+func _bend_chain(ch: Array, axis: Vector3, angle: float) -> void:
 	var a := angle / ch.size()
 	var ax := axis.normalized()
 	for i in ch:
