@@ -16,6 +16,10 @@ var lifted := -1                   # emplacement de l'arbre soulevé, -1 si aucu
 var pending_open := -1             # emplacement à ouvrir quand la caméra a fini de s'approcher
 var remove_ms := 0                 # premier appui sur « Retirer » (confirmation)
 var gauges: HBoxContainer
+var root_mode := false             # rempotage : motte à nu, coupe des racines (étape 23b)
+var root_bar: PanelContainer
+var root_n0 := 0                   # segments de racines au début du rempotage
+var root_cut := 0                  # segments retirés pendant le rempotage
 var pot_mi := MeshInstance3D.new()
 var soil_mi := MeshInstance3D.new()
 var wood_mi := MeshInstance3D.new()
@@ -280,10 +284,18 @@ func _build_ui() -> void:
 		b.add_theme_stylebox_override("hover", _box(ORANGE, GOLD))
 	_button(pages[3], "Feuilles", _toggle_leaves, "feuilles")
 	_button(pages[3], "Jardin", _enter_garden, "jardin")
-	_button(pages[3], "Rempoter", _show_repot, "rempoter")
+	_button(pages[3], "Rempoter", _enter_roots, "rempoter")
 	_button(pages[3], "Recentrer", _recenter, "recentrer")
 	_button(pages[3], "Retirer", _remove, "retirer")
 	_tab(0)
+	root_bar = PanelContainer.new()  # rempotage : remplace les onglets
+	root.add_child(root_bar)
+	var rb := HBoxContainer.new()
+	root_bar.add_child(rb)
+	_button(rb, "Couper la racine", _cut_root, "ciseaux")
+	_button(rb, "Tuile", _toggle_tile, "tuile")
+	_button(rb, "Replanter", _show_repot, "rempoter")
+	root_bar.visible = false
 	# Chargement : une feuille qui tourne au milieu de l'écran pendant le calcul de la période.
 	loader = Polygon2D.new()
 	var pts := PackedVector2Array()
@@ -306,10 +318,72 @@ func _build_ui() -> void:
 	layer.add_child(garden_panel)
 
 
-## Rempotage : choix du pot et de la part des racines à couper.
-func _show_repot() -> void:
+## Rempotage, 1 : l'arbre sort de son pot, toute la motte est visible ; on coupe des racines, on pose la tuile.
+func _enter_roots() -> void:
 	if _busy():
 		return
+	_clear_cut()
+	root_mode = true
+	root_n0 = sim.root.size()
+	root_cut = 0
+	TreeMesh.all_roots = true
+	TreeMesh.root_sel = -1
+	panel.visible = false
+	root_bar.visible = true
+	pot_mi.visible = false
+	soil_mi.visible = false
+	_refresh()
+	_say("Touche une racine pour la choisir, puis coupe-la. Idéal : fin février à début avril.")
+	goal_target = Vector3(0, -0.02, 0)
+	goal_dist = 0.3
+	gliding = true
+
+
+func _leave_roots() -> void:
+	root_mode = false
+	TreeMesh.all_roots = false
+	TreeMesh.root_sel = -1
+	panel.visible = true
+	root_bar.visible = false
+	pot_mi.visible = true
+	soil_mi.visible = true
+	garden.save_tree(garden.current)
+	_size_pot()
+	_refresh()
+	_recenter()
+
+
+## Racine la plus proche du doigt, -1 si aucune.
+func _pick_root(pos: Vector2) -> int:
+	var rs := sim.root
+	var best := -1
+	var best_d := 40.0 * ui_scale
+	for i in rs.size():
+		if cam.is_position_behind(rs.p0[i]) or cam.is_position_behind(rs.p1[i]):
+			continue
+		var d := Geometry2D.get_closest_point_to_segment(pos, cam.unproject_position(rs.p0[i]), cam.unproject_position(rs.p1[i])).distance_to(pos)
+		if d < best_d:
+			best_d = d
+			best = i
+	return best
+
+
+func _cut_root() -> void:
+	if TreeMesh.root_sel < 0:
+		_say("Touche d'abord une racine.")
+		return
+	root_cut += sim.root.cut(TreeMesh.root_sel)
+	TreeMesh.root_sel = -1
+	_refresh()
+
+
+func _toggle_tile() -> void:
+	sim.root.tile = not sim.root.tile
+	_say("Tuile posée sous le tronc : les racines vont s'étaler à plat." if sim.root.tile else "Tuile retirée.")
+
+
+## Rempotage, 2 : choix du pot, puis l'arbre est replanté.
+func _show_repot() -> void:
 	for c in garden_panel.get_children():
 		c.queue_free()
 	var box := VBoxContainer.new()
@@ -318,33 +392,29 @@ func _show_repot() -> void:
 	top.custom_minimum_size.y = 60 * ui_scale
 	box.add_child(top)
 	var title := Label.new()
-	title.text = "Rempoter (idéal : fin février à début avril)\nPot actuel : %d L" % roundi(sim.pot_volume)
+	var part := roundi(100.0 * root_cut / maxf(root_n0, 1.0))
+	title.text = "Replanter (idéal : fin février à début avril)\nPot actuel : %d L · racines coupées : %d %%" % [roundi(sim.pot_volume), part]
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title)
-	var choice := [sim.pot_volume, 0.0]  # volume, part des racines coupées
-	var groups := [ButtonGroup.new(), ButtonGroup.new()]
-	var rows := [[[8.0, "Grand 8 L"], [3.0, "Moyen 3 L"], [1.0, "Petit 1 L"]],
-			[[0.0, "Racines intactes"], [0.33, "Couper 1/3"], [0.5, "Couper 1/2"]]]
-	for g in 2:
-		var row := HBoxContainer.new()
-		box.add_child(row)
-		for opt in rows[g]:
-			var b := _button(row, opt[1], Callable())
-			b.toggle_mode = true
-			b.button_group = groups[g]
-			b.button_pressed = is_equal_approx(opt[0], choice[g])
-			b.pressed.connect(func(): choice[g] = opt[0])
+	var choice := [sim.pot_volume]
+	var group := ButtonGroup.new()
+	var row := HBoxContainer.new()
+	box.add_child(row)
+	for opt in [[8.0, "Grand 8 L"], [3.0, "Moyen 3 L"], [1.0, "Petit 1 L"]]:
+		var b := _button(row, opt[1], Callable())
+		b.toggle_mode = true
+		b.button_group = group
+		b.button_pressed = is_equal_approx(opt[0], choice[0])
+		b.pressed.connect(func(): choice[0] = opt[0])
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(spacer)
 	var row3 := HBoxContainer.new()
 	box.add_child(row3)
-	_button(row3, "Rempoter", func():
+	_button(row3, "Replanter", func():
 		garden_panel.visible = false
-		_say(sim.repot(choice[0], choice[1]))
-		garden.save_tree(garden.current)
-		_size_pot()
-		_info(sim.week))
+		_say(sim.repot(choice[0], float(root_cut) / maxf(root_n0, 1.0)))
+		_leave_roots())
 	_button(row3, "Annuler", func(): garden_panel.visible = false)
 	var bottom := Control.new()
 	bottom.custom_minimum_size.y = 40 * ui_scale
@@ -727,9 +797,9 @@ func _info(time: float) -> void:
 		state = "\nl'arbre est mort"
 	elif sim.segs[0].count > 0.85 * sim.capacity:
 		state = "\nlimite de rameaux du jeu atteinte : éclaircir pour relancer"
-	info.text = "%s · an %d · sem. %d · %s\n%d cm · pot %d L · %s%s" % [
+	info.text = "%s · an %d · sem. %d · %s\n%d cm · Ø %d mm · pot %d L · %s%s" % [
 		garden.names[garden.current], wk / 52 + 1, w + 1, season, roundi(sim.height() * 100.0),
-		roundi(sim.pot_volume), extra, state]
+		roundi(sim.segs[0].radius * 2000.0), roundi(sim.pot_volume), extra, state]
 
 
 func _update_cam() -> void:
@@ -745,7 +815,7 @@ func _input(ev: InputEvent) -> void:
 func _unhandled_input(ev: InputEvent) -> void:
 	if ev is InputEventScreenTouch:
 		if ev.pressed:
-			if panel.visible and panel.get_global_rect().has_point(ev.position):
+			if (panel.visible and panel.get_global_rect().has_point(ev.position)) or (root_bar.visible and root_bar.get_global_rect().has_point(ev.position)):
 				return
 			touches[ev.index] = ev.position
 			if touches.size() == 1:
@@ -894,6 +964,10 @@ func _select_at(pos: Vector2) -> void:
 		_stop_anim()
 		return
 	if task >= 0:
+		return
+	if root_mode:
+		TreeMesh.root_sel = _pick_root(pos)
+		_refresh()
 		return
 	var i := _pick(pos)
 	axis.clear()

@@ -8,6 +8,8 @@ extends RefCounted
 
 const SIDES := 12
 var sides := SIDES  # faces des anneaux en cours : 6 pour les rameaux fins et les bourgeons
+static var all_roots := false  # rempotage (étape 23b) : toute la charpente racinaire, motte à nu
+static var root_sel := -1      # racine choisie pour la coupe (surlignée avec tout ce qui en part)
 const LEAF_PTS := 14                       # points du bord d'un côté de la feuille
 const SELECTED := Color(0.95, 0.2, 0.12, 0.7)
 const WEAK := Color(0.8, 0.7, 0.35, 0.3)     # branche qui s'affaiblit à l'ombre
@@ -402,13 +404,19 @@ func _roots() -> void:
 		if p >= 0 and (cont[p] < 0 or rs.rad[i] > rs.rad[cont[p]]):
 			cont[p] = i
 	var a0 := Vector4(-1000.0, 1.0, 1.0, -1.0)
+	var sel := {}
+	if root_sel >= 0 and root_sel < n:
+		sel[root_sel] = true
+		for j in range(root_sel + 1, n):
+			if sel.has(rs.par[j]):
+				sel[j] = true
 	for i in n:
 		var p := rs.par[i]
-		if (p >= 0 and cont[p] == i) or rs.p0[i].y + rs.rad[i] < -0.001:
+		if (p >= 0 and cont[p] == i) or (rs.p0[i].y + rs.rad[i] < -0.001 and not all_roots):
 			continue  # prolongement d'un axe, ou départ enterré
 		sides = 6 if rs.rad[i] < 0.0015 else SIDES
 		var d := rs.dir[i]
-		var prev := _ring(rs.p0[i], d, _perp(d), rs.rad[i], 0.0, OLD, i * 1.3, a0, Vector4.ZERO)
+		var prev := _ring(rs.p0[i], d, _perp(d), rs.rad[i], 0.0, SELECTED if sel.has(i) else OLD, i * 1.3, a0, Vector4.ZERO)
 		_cap(prev, rs.p0[i] - d * rs.rad[i] * 0.5, false)
 		var v := 0.0
 		var j := i
@@ -418,11 +426,11 @@ func _roots() -> void:
 			var r: float = (rs.rad[j] + rs.rad[nx]) * 0.5 if nx >= 0 else rs.rad[j] * 0.7
 			d = rs.dir[j]
 			v += RootSim.RI
-			var cur := _ring(rs.p1[j], d, _perp(d), r, v, OLD, i * 1.3, a0, Vector4.ZERO)
+			var cur := _ring(rs.p1[j], d, _perp(d), r, v, SELECTED if sel.has(j) else OLD, i * 1.3, a0, Vector4.ZERO)
 			_join(prev, cur)
 			prev = cur
 			last = rs.p1[j]
-			if rs.p1[j].y + r < -0.001:
+			if rs.p1[j].y + r < -0.001 and not all_roots:
 				break  # la racine a plongé
 			j = nx
 		_cap(prev, last + d * 0.002, true)
