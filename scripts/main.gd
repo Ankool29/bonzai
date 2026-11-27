@@ -57,6 +57,9 @@ var ui_scale := 1.0
 var panel: PanelContainer
 var info: Label
 var cut_btn: Button
+var wire_btn: Button
+var cut_tool := 1              # dernier outil de coupe choisi (onglet Taille)
+var pages: Array[HBoxContainer] = []
 
 
 func _ready() -> void:
@@ -169,25 +172,33 @@ func _build_ui() -> void:
 	info = Label.new()
 	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(info)
-	var row1 := HBoxContainer.new()
-	box.add_child(row1)
-	_button(row1, "+1 semaine", func(): _advance(1))
-	_button(row1, "+1 saison", func(): _advance(13))
-	_button(row1, "+1 an", func(): _advance(52))
-	var row2 := HBoxContainer.new()
-	box.add_child(row2)
+	# Onglets : une seule rangée d'outils à la fois, pour ne pas encombrer l'écran.
+	var tabs := HBoxContainer.new()
+	box.add_child(tabs)
+	var group := ButtonGroup.new()
 	for k in 4:
-		var b := _button(row2, ["Doigts", "Ciseaux", "Concave", "Fil"][k], _set_tool.bind(k))
+		var t := _button(tabs, ["Temps", "Taille", "Fil", "Arbre"][k], _tab.bind(k))
+		t.toggle_mode = true
+		t.button_group = group
+		t.button_pressed = k == 0
+		t.custom_minimum_size.y = 70 * ui_scale
+		var page := HBoxContainer.new()
+		box.add_child(page)
+		pages.append(page)
+	_button(pages[0], "+1 semaine", func(): _advance(1))
+	_button(pages[0], "+1 saison", func(): _advance(13))
+	_button(pages[0], "+1 an", func(): _advance(52))
+	for k in 3:
+		var b := _button(pages[1], ["Doigts", "Ciseaux", "Concave"][k], _set_tool.bind(k))
 		b.toggle_mode = true
 		tool_btns.append(b)
-	_set_tool(tool)
-	cut_btn = _button(row2, "Couper", _act)
-	var row3 := HBoxContainer.new()
-	box.add_child(row3)
-	_button(row3, "Feuilles", _toggle_leaves)
-	_button(row3, "Jardin", _show_garden)
-	_button(row3, "Rempoter", _show_repot)
-	_button(row3, "Recentrer", _recenter)
+	cut_btn = _button(pages[1], "Couper", _cut)
+	wire_btn = _button(pages[2], "Ligaturer", _act)
+	_button(pages[3], "Feuilles", _toggle_leaves)
+	_button(pages[3], "Jardin", _show_garden)
+	_button(pages[3], "Rempoter", _show_repot)
+	_button(pages[3], "Recentrer", _recenter)
+	_tab(0)
 	# Chargement : une feuille qui tourne au milieu de l'écran pendant le calcul de la période.
 	loader = Polygon2D.new()
 	var pts := PackedVector2Array()
@@ -314,6 +325,8 @@ func _show_garden() -> void:
 func _button(parent: Control, text: String, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
+	b.clip_text = true  # jamais plus large que l'écran
+	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	b.custom_minimum_size.y = 90 * ui_scale
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if cb.is_valid():
@@ -392,6 +405,7 @@ func _set_buttons(on: bool) -> void:
 	for b in panel.find_children("*", "Button", true, false):
 		b.disabled = not on
 	cut_btn.disabled = not on or cut_k < 0
+	wire_btn.disabled = not on or cut_k < 0
 
 
 func _set_time(time: float) -> void:
@@ -407,26 +421,35 @@ func _show(meshes: Array) -> void:
 
 func _set_tool(k: int) -> void:
 	tool = k
+	cut_tool = k
 	for i in tool_btns.size():
 		tool_btns[i].set_pressed_no_signal(i == k)
 	_update_act()
 
 
+## Onglet k : 0 temps, 1 taille, 2 fil (outil fil), 3 arbre.
+func _tab(k: int) -> void:
+	for i in pages.size():
+		pages[i].visible = i == k
+	tool = 3 if k == 2 else cut_tool
+	for i in tool_btns.size():
+		tool_btns[i].set_pressed_no_signal(i == cut_tool)
+	_update_act()
+	if sim:
+		_draw_overlay()
+
+
 ## Bouton d'action : couper, ou avec le fil, ligaturer / déligaturer la branche sélectionnée.
 func _update_act() -> void:
-	if cut_btn == null:
+	if wire_btn == null:
 		return
 	cut_btn.disabled = cut_k < 0
-	if tool != 3:
-		cut_btn.text = "Couper"
-	else:
-		cut_btn.text = "Déligaturer" if cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0 else "Ligaturer"
+	wire_btn.disabled = cut_k < 0
+	wire_btn.text = "Déligaturer" if cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0 else "Ligaturer"
 
 
+## Onglet Fil : ligaturer ou déligaturer la branche sélectionnée.
 func _act() -> void:
-	if tool != 3:
-		_cut()
-		return
 	if _busy() or cut_k < 0:
 		return
 	var i := axis[cut_k]
