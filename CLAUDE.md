@@ -18,7 +18,7 @@ Godot 4.7, GDScript, cible mobile (Galaxy S25 Ultra). Le joueur parle français 
 - `scripts/tree_mesh.gd` (`TreeMesh`) : bois (anneaux continus, fourches en Y), feuilles d'orme et d'érable, aiguilles de pin en géométrie, dates d'animation par sommet, matériaux cel shading.
 - `scripts/garden.gd` (`Garden`) : jardin (tous les arbres, chacun sa date ; seul l'arbre ouvert pousse), sauvegarde dans `user://` (un index + un fichier par arbre).
 - `scripts/main.gd` : scène (soleil et ombres, pot), caméra au doigt, sélection, repère de coupe, outils de taille et fil, boutons ; avance du temps (calcul en fil de calcul puis animation). Scène : `scenes/main.tscn`.
-- `shaders/toon.gdshader` (cel shading, motifs d'écorce et de terre), `shaders/outline.gdshader` (contours), `shaders/anim.gdshaderinc` (animation de la pousse à partir des dates portées par les sommets). Ne jamais mettre la clé PixelLab dans le dépôt.
+- `shaders/toon.gdshader` (cel shading, motifs d'écorce et de terre), `shaders/outline.gdshader` (contours), `shaders/anim.gdshaderinc` (animation de la pousse à partir des dates portées par les sommets). Icônes d'interface : `ui/icons` (PixelLab). Ne jamais mettre la clé PixelLab dans le dépôt.
 
 ## Ailleurs
 - `docs/CONCEPTION.md` : décisions de conception. `docs/ETAPEx.md` : cahiers d'étape. Lis seulement le cahier de l'étape en cours.
