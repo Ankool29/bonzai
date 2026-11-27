@@ -60,6 +60,16 @@ var ui_scale := 1.0
 
 var panel: PanelContainer
 var info: Label
+var vig_bar: ProgressBar
+var res_bar: ProgressBar
+# Couleurs de l'interface (bois et papier, icônes PixelLab dans ui/icons)
+const WOOD := Color(0.29, 0.2, 0.15)
+const WOOD_EDGE := Color(0.38, 0.27, 0.2)
+const GOLD := Color(0.94, 0.78, 0.47)
+const PAPER := Color(0.93, 0.89, 0.78)
+const PAPER2 := Color(0.84, 0.78, 0.63)
+const INK := Color(0.16, 0.12, 0.09)
+const ORANGE := Color(0.78, 0.47, 0.24)
 var cut_btn: Button
 var wire_btn: Button
 var cut_tool := 1              # dernier outil de coupe choisi (onglet Taille)
@@ -149,15 +159,40 @@ func _open(i: int) -> void:
 	_recenter()
 
 
+## Cadre de pixel art : fond uni, bordure épaisse, coins carrés.
+func _box(bg: Color, edge: Color, w := 4) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.border_color = edge
+	sb.set_border_width_all(int(w * ui_scale))
+	sb.set_content_margin_all(8 * ui_scale)
+	return sb
+
+
 func _build_ui() -> void:
 	var theme := Theme.new()
 	theme.default_font_size = int(26 * ui_scale)
+	theme.set_stylebox("normal", "Button", _box(WOOD, WOOD_EDGE))
+	theme.set_stylebox("hover", "Button", _box(WOOD, WOOD_EDGE))
+	theme.set_stylebox("pressed", "Button", _box(PAPER2, GOLD))
+	theme.set_stylebox("hover_pressed", "Button", _box(PAPER2, GOLD))
+	theme.set_stylebox("disabled", "Button", _box(WOOD.darkened(0.3), WOOD_EDGE.darkened(0.3)))
+	theme.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	for c in ["font_color", "font_hover_color", "font_focus_color"]:
+		theme.set_color(c, "Button", PAPER)
+	for c in ["font_pressed_color", "font_hover_pressed_color"]:
+		theme.set_color(c, "Button", INK)
+	theme.set_color("font_disabled_color", "Button", PAPER.darkened(0.5))
+	theme.set_constant("icon_max_width", "Button", int(72 * ui_scale))
+	theme.set_stylebox("panel", "PanelContainer", _box(PAPER, WOOD_EDGE))
+	theme.set_color("font_color", "Label", INK)
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	var root := VBoxContainer.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.theme = theme
+	root.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST  # icônes pixel art nettes
 	layer.add_child(root)
 	msg = Label.new()  # message court (outil inadapté…)
 	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -175,34 +210,54 @@ func _build_ui() -> void:
 	var box := VBoxContainer.new()
 	panel.add_child(box)
 	info = Label.new()
-	info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(info)
+	var gauges := HBoxContainer.new()  # jauges de vigueur et de réserves
+	box.add_child(gauges)
+	for k in 2:
+		var l := Label.new()
+		l.text = ["Vigueur", " Réserves"][k]
+		gauges.add_child(l)
+		var bar := ProgressBar.new()
+		bar.max_value = 1.0
+		bar.show_percentage = false
+		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		bar.custom_minimum_size.y = 26 * ui_scale
+		bar.add_theme_stylebox_override("background", _box(INK, INK, 2))
+		bar.add_theme_stylebox_override("fill", _box([Color(0.84, 0.59, 0.24), Color(0.43, 0.67, 0.31)][k], INK, 2))
+		gauges.add_child(bar)
+		if k == 0:
+			vig_bar = bar
+		else:
+			res_bar = bar
 	# Onglets : une seule rangée d'outils à la fois, pour ne pas encombrer l'écran.
 	var tabs := HBoxContainer.new()
 	box.add_child(tabs)
 	var group := ButtonGroup.new()
 	for k in 4:
-		var t := _button(tabs, ["Temps", "Taille", "Fil", "Arbre"][k], _tab.bind(k))
+		var t := _button(tabs, ["Temps", "Taille", "Fil", "Arbre"][k], _tab.bind(k), ["temps", "taille", "fil", "arbre"][k])
 		t.toggle_mode = true
 		t.button_group = group
 		t.button_pressed = k == 0
-		t.custom_minimum_size.y = 70 * ui_scale
 		var page := HBoxContainer.new()
 		box.add_child(page)
 		pages.append(page)
-	_button(pages[0], "+1 semaine", func(): _advance(1))
-	_button(pages[0], "+1 saison", func(): _advance(13))
-	_button(pages[0], "+1 an", func(): _advance(52))
+	_button(pages[0], "+1 semaine", func(): _advance(1), "semaine")
+	_button(pages[0], "+1 saison", func(): _advance(13), "saison")
+	_button(pages[0], "+1 an", func(): _advance(52), "an")
 	for k in 3:
-		var b := _button(pages[1], ["Doigts", "Ciseaux", "Concave"][k], _set_tool.bind(k))
+		var b := _button(pages[1], ["Doigts", "Ciseaux", "Concave"][k], _set_tool.bind(k), ["doigts", "ciseaux", "concave"][k])
 		b.toggle_mode = true
 		tool_btns.append(b)
-	cut_btn = _button(pages[1], "Couper", _cut)
-	wire_btn = _button(pages[2], "Ligaturer", _act)
-	_button(pages[3], "Feuilles", _toggle_leaves)
-	_button(pages[3], "Jardin", _show_garden)
-	_button(pages[3], "Rempoter", _show_repot)
-	_button(pages[3], "Recentrer", _recenter)
+	cut_btn = _button(pages[1], "Couper", _cut, "couper")
+	wire_btn = _button(pages[2], "Ligaturer", _act, "ligaturer")
+	for b in [cut_btn, wire_btn]:  # boutons d'action en orange
+		b.add_theme_stylebox_override("normal", _box(ORANGE, GOLD))
+		b.add_theme_stylebox_override("hover", _box(ORANGE, GOLD))
+	_button(pages[3], "Feuilles", _toggle_leaves, "feuilles")
+	_button(pages[3], "Jardin", _show_garden, "jardin")
+	_button(pages[3], "Rempoter", _show_repot, "rempoter")
+	_button(pages[3], "Recentrer", _recenter, "recentrer")
 	_tab(0)
 	# Chargement : une feuille qui tourne au milieu de l'écran pendant le calcul de la période.
 	loader = Polygon2D.new()
@@ -221,6 +276,7 @@ func _build_ui() -> void:
 	garden_panel = PanelContainer.new()  # liste des arbres, par-dessus tout
 	garden_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 	garden_panel.theme = theme
+	garden_panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	garden_panel.visible = false
 	layer.add_child(garden_panel)
 
@@ -327,12 +383,17 @@ func _show_garden() -> void:
 	garden_panel.visible = true
 
 
-func _button(parent: Control, text: String, cb: Callable) -> Button:
+func _button(parent: Control, text: String, cb: Callable, icon := "") -> Button:
 	var b := Button.new()
 	b.text = text
+	if icon != "":  # icône PixelLab au-dessus du texte
+		b.icon = load("res://ui/icons/%s.png" % icon)
+		b.expand_icon = true
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 	b.clip_text = true  # jamais plus large que l'écran
 	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	b.custom_minimum_size.y = 90 * ui_scale
+	b.custom_minimum_size.y = (130 if icon != "" else 90) * ui_scale
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if cb.is_valid():
 		b.pressed.connect(cb)
@@ -542,12 +603,16 @@ func _info(time: float) -> void:
 	var vig := "forte" if v >= 2.0 else ("bonne" if v >= 1.0 else ("faible" if v >= 0.5 else "très faible"))
 	if cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0:
 		extra += " · " + sim.wire_state(sim.segs[axis[cut_k]].wire)
-	var state := "mort" if sim.segs[0].dry else "vigueur %s · réserves %d %%" % [vig, roundi(minf(sim.health(), 1.5) * 100.0)]
-	if sim.segs[0].count > 0.85 * sim.capacity:
-		state += "\nlimite de rameaux du jeu atteinte : éclaircir pour relancer"
-	info.text = "%s · année %d · semaine %d (%s)\n%s · hauteur %d cm · pot %d L\n%s" % [
-		garden.names[garden.current], wk / 52 + 1, w + 1, season, extra, roundi(sim.height() * 100.0),
-		roundi(sim.pot_volume), state]
+	vig_bar.value = clampf(v / 2.5, 0.0, 1.0)
+	res_bar.value = clampf(sim.health() / 1.5, 0.0, 1.0)
+	var state := ""
+	if sim.segs[0].dry:
+		state = "\nl'arbre est mort"
+	elif sim.segs[0].count > 0.85 * sim.capacity:
+		state = "\nlimite de rameaux du jeu atteinte : éclaircir pour relancer"
+	info.text = "%s · année %d · semaine %d · %s · vigueur %s\nhauteur %d cm · pot %d L · %s%s" % [
+		garden.names[garden.current], wk / 52 + 1, w + 1, season, vig, roundi(sim.height() * 100.0),
+		roundi(sim.pot_volume), extra, state]
 
 
 func _update_cam() -> void:
