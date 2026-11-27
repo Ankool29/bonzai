@@ -177,6 +177,12 @@ func from_data(d: Dictionary) -> void:
 		if k != "segs" and k != "count" and k != "rng_seed" and k != "rng_state":
 			set(k, d[k])
 	capacity = maxi(capacity, 6000)  # les arbres plantés avant l'étape 15 avaient 1500 ou 3000
+	# L'apparence suit toujours la fiche espèce actuelle (un réglage graphique s'applique aussi aux anciens arbres).
+	for sp in [Species.ELM, Species.PINE, Species.MAPLE]:
+		if sp["name"] == name:
+			for k in ["bud_size", "bud_color", "bark_colors", "young_color", "autumn_color", "foliage_size"]:
+				if sp.has(k):
+					set(k, sp[k])
 	if not d.has("roots"):  # arbre sauvegardé avant l'étape 17
 		roots = maxf(reserve, 1.0)
 		reserve = roots
