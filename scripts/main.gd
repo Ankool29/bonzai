@@ -25,6 +25,7 @@ var tool_btns: Array[Button] = []
 var dragging_cut := false
 var dragging_bend := false      # outil fil : on plie la branche ligaturée en glissant depuis le repère
 var bend_q := Quaternion.IDENTITY
+var bend_b0 := Vector2.ZERO     # position à l'écran de la poignée au début du geste
 var overlay := MeshInstance3D.new()  # repère de coupe et bourgeons
 var msg: Label
 var msg_until := 0
@@ -97,6 +98,7 @@ func _ready() -> void:
 	om.vertex_color_use_as_albedo = true
 	om.no_depth_test = true
 	om.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA  # branche fantôme translucide
+	om.cull_mode = BaseMaterial3D.CULL_DISABLED  # rubans et points vus des deux côtés
 	overlay.material_override = om
 	overlay.mesh = ImmediateMesh.new()
 	world.add_child(overlay)
@@ -566,13 +568,15 @@ func _unhandled_input(ev: InputEvent) -> void:
 				tap_moved = false
 				# doigt posé sur le repère : on le fait glisser le long de la branche, ou on plie la branche ligaturée
 				# avec le fil : le rond se déplace le long de la branche ; attraper la branche au-delà du rond la plie
-				var on_mark := cut_k >= 0 and _cut_screen_pos().distance_to(ev.position) < 45.0 * ui_scale
-				dragging_cut = on_mark
-				dragging_bend = false
+				# fil : deux points blancs ; le premier (point de pli) glisse le long de la branche, le second
+				# (poignée, au bout du fil) se tire pour plier
+				var near := 45.0 * ui_scale
 				bend_q = Quaternion.IDENTITY
-				if not on_mark and tool == 3 and cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0:
-					var g := _pick(ev.position)
-					dragging_bend = g >= 0 and g in sim.subtree(axis[cut_k])
+				dragging_bend = false
+				if tool == 3 and cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0:
+					bend_b0 = cam.unproject_position(_bend_handle())
+					dragging_bend = bend_b0.distance_to(ev.position) < near
+				dragging_cut = not dragging_bend and cut_k >= 0 and _cut_screen_pos().distance_to(ev.position) < near
 			else:
 				tap_moved = true
 				pinch = _pinch_len()
@@ -616,7 +620,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 		if touches.size() == 1 and dragging_bend:
 			# la branche tourne autour du rond, dans le plan de l'écran, pour suivre le doigt
 			var ps := _cut_screen_pos()
-			var ang := (tap_start - ps).angle_to(ev.position - ps)  # positif : sens horaire à l'écran
+			var ang := (bend_b0 - ps).angle_to(ev.position - ps)  # positif : sens horaire à l'écran
 			bend_q = Quaternion(-cam.global_transform.basis.z, ang)
 			_draw_overlay()
 		elif touches.size() == 1 and dragging_cut:
@@ -726,13 +730,7 @@ func _draw_overlay() -> void:
 	var a := d.cross(Vector3.UP if absf(d.y) < 0.9 else Vector3.RIGHT).normalized()
 	var b := d.cross(a)
 	var r := c.radius + 0.004
-	if tool == 3:  # fil : un rond autour de la branche, là où elle pliera
-		for k in 16:
-			for q in [k, k + 1]:
-				var u: float = TAU * q / 16.0
-				im.surface_set_color(Color(1.0, 0.85, 0.1))
-				im.surface_add_vertex(c.start + (a * cos(u) + b * sin(u)) * r)
-	else:
+	if tool != 3:
 		for v in [a, b]:
 			im.surface_set_color(Color(1.0, 0.85, 0.1))
 			im.surface_add_vertex(c.start - v * r)
@@ -756,13 +754,22 @@ func _draw_overlay() -> void:
 		im.surface_set_color(col)
 		im.surface_add_vertex(s.end + s.lat_dir * (0.012 if below else 0.006))
 	im.surface_end()
-	if dragging_bend:
-		_draw_ghost(im)
+	if tool == 3:
+		if dragging_bend:
+			_draw_ghost(im)
+		_dot(im, c.start)  # point de pli
+		if c.wire > 0:
+			var hp := _bend_handle()
+			if dragging_bend:  # la poignée suit la branche fantôme
+				var g := _ghost_parts()
+				hp = g[1] + g[0] * (hp - g[1])
+				if g[3] >= 0:
+					hp = g[2] + g[0] * (hp - g[2])
+			_dot(im, hp)
 
 
-## Branche fantôme pendant le pliage : la partie au-delà du rond, pliée comme le fera la simulation (moitié
-## de l'angle à la base de l'entre-nœud du rond, moitié au suivant), en rubans orange translucides.
-func _draw_ghost(im: ImmediateMesh) -> void:
+## Pliage tel que la simulation le fera : [demi-rotation, pivot 1, pivot 2 (déjà tourné), entre-nœud 2 ou -1].
+func _ghost_parts() -> Array:
 	var i0 := axis[cut_k]
 	var i1 := sim.segs[i0].main_child
 	if i1 >= 0 and sim.segs[i1].wire != sim.segs[i0].wire:
@@ -772,6 +779,41 @@ func _draw_ghost(im: ImmediateMesh) -> void:
 		half = Quaternion(bend_q.get_axis(), bend_q.get_angle() * (0.5 if i1 >= 0 else 1.0))
 	var p0 := sim.segs[i0].start
 	var p1 := (p0 + half * (sim.segs[i1].start - p0)) if i1 >= 0 else p0
+	return [half, p0, p1, i1]
+
+
+## Poignée de pliage : au bout de la partie ligaturée qui suit le point de pli.
+func _bend_handle() -> Vector3:
+	var ch := sim.wire_segs(sim.segs[axis[cut_k]].wire)
+	return sim.segs[ch[-1]].end
+
+
+## Point blanc cerclé de noir, de taille constante à l'écran, tourné vers la caméra.
+func _dot(im: ImmediateMesh, p: Vector3) -> void:
+	var bas := cam.global_transform.basis
+	var r := cam.global_position.distance_to(p) * 0.012
+	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
+	for ring in [[r * 1.35, Color(0.1, 0.1, 0.1)], [r, Color.WHITE]]:
+		var rr: float = ring[0]
+		var col: Color = ring[1]
+		for k in 16:
+			var u0 := TAU * k / 16.0
+			var u1 := TAU * (k + 1) / 16.0
+			for v in [p, p + (bas.x * cos(u0) + bas.y * sin(u0)) * rr, p + (bas.x * cos(u1) + bas.y * sin(u1)) * rr]:
+				im.surface_set_color(col)
+				im.surface_add_vertex(v)
+	im.surface_end()
+
+
+## Branche fantôme pendant le pliage : la partie au-delà du rond, pliée comme le fera la simulation (moitié
+## de l'angle à la base de l'entre-nœud du rond, moitié au suivant), en rubans orange translucides.
+func _draw_ghost(im: ImmediateMesh) -> void:
+	var i0 := axis[cut_k]
+	var g := _ghost_parts()
+	var half: Quaternion = g[0]
+	var p0: Vector3 = g[1]
+	var p1: Vector3 = g[2]
+	var i1: int = g[3]
 	var second := {}
 	if i1 >= 0:
 		for k in sim.subtree(i1):
@@ -787,7 +829,7 @@ func _draw_ghost(im: ImmediateMesh) -> void:
 			e[j] = p0 + half * (e[j] - p0)
 			if second.has(k):
 				e[j] = p1 + half * (e[j] - p1)
-		var side := view.cross(e[1] - e[0]).normalized() * maxf(s.radius, 0.0007)
+		var side: Vector3 = view.cross(e[1] - e[0]).normalized() * maxf(s.radius * 1.2, 0.0012)
 		var col := Color(1.0, 0.55, 0.1, 0.55)
 		for v in [e[0] - side, e[0] + side, e[1] + side, e[0] - side, e[1] + side, e[1] - side]:
 			im.surface_set_color(col)
