@@ -424,6 +424,82 @@ func repot(volume: float, cut: float) -> String:
 	return txt + "Rempoté hors saison : les racines repartiront au printemps."
 
 
+## Pin (étape 24) : chandelles de l'année (pousses du printemps parties d'un bois plus vieux).
+func candles() -> PackedInt32Array:
+	var y0 := floorf(week / 52.0) * 52.0
+	var out := PackedInt32Array()
+	for i in range(1, segs.size()):
+		var s := segs[i]
+		if s.born >= y0 and segs[s.parent].born < y0 and not s.dry:
+			out.append(i)
+	return out
+
+
+const MEKIRI_MIN := 4  # chandelle d'au moins 4 entre-nœuds : forte ; les plus faibles sont épargnées
+
+
+## Mekiri de tout l'arbre : coupe les chandelles fortes, épargne les faibles (comme les bonsaïstes).
+## Refusé hors saison ou sur un arbre affaibli (vérifié au portage : sur toutes les chandelles, il tue l'arbre).
+func mekiri() -> String:
+	var wk := week % 52
+	if wk < 20 or wk > 28:
+		return "Le mekiri se fait quand les chandelles ont fini de pousser : fin mai à début juillet."
+	if health() < 0.6:
+		return "Arbre trop faible pour le mekiri : laisse-le reprendre des forces cette année."
+	var cs := candles()
+	var n := 0
+	for k in range(cs.size() - 1, -1, -1):  # de la fin : une coupe ne décale que les indices au-delà
+		if subtree(cs[k]).size() >= MEKIRI_MIN:
+			prune(cs[k])
+			n += 1
+	return "Mekiri : %d chandelles coupées, %d faibles épargnées. Pousses d'été dans 2 à 4 semaines." % [n, cs.size() - n]
+
+
+## Pin, automne : chaque couronne ramenée à 2 bourgeons, les plus horizontaux ; le bourgeon central,
+## le plus fort, est retiré : la pousse se partage en deux l'an prochain.
+func select_buds() -> String:
+	var wk := week % 52
+	if wk < 37 or wk > 50:
+		return "Le tri des bourgeons se fait en automne, quand ils sont formés."
+	var removed := 0
+	for t in segs.size():
+		if not segs[t].term_bud or segs[t].dry:
+			continue
+		var crown: Array[int] = []
+		var k := t
+		while k >= 0 and segs[k].lat_bud and (segs[k].end - segs[k].start).length() < internode * 0.1:
+			crown.append(k)
+			k = segs[k].parent
+		if crown.size() < 2:
+			continue
+		crown.sort_custom(func(a, b): return absf(segs[a].lat_dir.y) < absf(segs[b].lat_dir.y))
+		for m in range(2, crown.size()):
+			segs[crown[m]].lat_bud = false
+			removed += 1
+		segs[t].term_bud = false
+		removed += 1
+	return "Bourgeons triés : %d retirés, 2 gardés par couronne." % removed if removed > 0 else "Aucune couronne de plus de 2 bourgeons."
+
+
+## Pin : ce que donnera une coupe du segment i. [0 vert, 1 orange, 2 rouge ; conseil]
+func pine_hint(i: int) -> Array:
+	var s := segs[i]
+	var p := segs[s.parent]
+	var y0 := floorf(week / 52.0) * 52.0
+	var wk := week % 52
+	if s.born >= y0 and p.born < y0:
+		if wk < 20:
+			return [1, "Chandelle encore en pousse : mekiri de fin mai à début juillet."]
+		if wk <= 28:
+			return [0, "Mekiri : 2 à 4 pousses d'été ici, si l'arbre est vigoureux."]
+		return [1, "Mekiri tardif : les bourgeons ne partiront qu'au printemps."]
+	if week - p.born < leaf_years * 52 and p.needle > 0.0:
+		if wk >= 18 and wk <= 30:
+			return [1, "Dans les aiguilles : bourgeons possibles, branche affaiblie."]
+		return [1, "Dans les aiguilles hors saison : peu de chances de bourgeons."]
+	return [2, "Bois sans aiguilles : rien ne repartira de cette coupe."]
+
+
 ## Coupe le segment i et tout ce qu'il porte. Renvoie false pour la base (on ne coupe pas tout l'arbre).
 const WOUND_MIN := 0.0015      # rayon au-delà duquel une coupe laisse une plaie (3 mm de diamètre)
 

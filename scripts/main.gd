@@ -84,6 +84,7 @@ const PAPER2 := Color(0.84, 0.78, 0.63)
 const INK := Color(0.16, 0.12, 0.09)
 const ORANGE := Color(0.78, 0.47, 0.24)
 var cut_btn: Button
+var pine_btns: Array[Button] = []  # Mekiri, Trier les bourgeons : pin seulement (étape 24)
 var wire_btn: Button
 var cut_tool := 1              # dernier outil de coupe choisi (onglet Taille)
 var pages: Array[HBoxContainer] = []
@@ -167,9 +168,21 @@ func _open(i: int) -> void:
 	lm.set_shader_parameter("autumn_color", sim.autumn_color)
 	_clear_cut()
 	layout = sim.layout
+	for b in pine_btns:
+		b.visible = sim.whorl > 0
 	_size_pot()
 	_refresh()
 	_recenter()
+
+
+func _pine_work(mekiri: bool) -> void:
+	if _busy():
+		return
+	_say(sim.mekiri() if mekiri else sim.select_buds())
+	garden.save_tree(garden.current)
+	_clear_cut()
+	layout = sim.layout
+	_refresh()
 
 
 ## Cadre de pixel art : fond uni, bordure épaisse, coins carrés.
@@ -277,6 +290,8 @@ func _build_ui() -> void:
 		b.toggle_mode = true
 		tool_btns.append(b)
 	cut_btn = _button(pages[1], "Couper", _cut, "couper")
+	pine_btns.append(_button(pages[1], "Mekiri", _pine_work.bind(true), "mekiri"))
+	pine_btns.append(_button(pages[1], "Trier les bourgeons", _pine_work.bind(false), "trier"))
 	wire_btn = _button(pages[2], "Ligaturer", _act, "ligaturer")
 	wire_btn.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	for b in [cut_btn, wire_btn]:  # boutons d'action en orange
@@ -790,6 +805,8 @@ func _info(time: float) -> void:
 	var v := sim.last_vigor
 	if cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0:
 		extra += " · " + sim.wire_state(sim.segs[axis[cut_k]].wire)
+	elif cut_k >= 0 and sim.whorl > 0 and tool != 3 and axis[cut_k] > 0:
+		extra = sim.pine_hint(axis[cut_k])[1]
 	vig_bar.value = clampf(v / 2.5, 0.0, 1.0)
 	res_bar.value = clampf(sim.health() / 1.5, 0.0, 1.0)
 	var state := ""
@@ -1003,6 +1020,8 @@ func _move_cut(pos: Vector2) -> void:
 	if best != cut_k:
 		cut_k = best
 		_draw_overlay()
+		if sim.whorl > 0:
+			_info(sim.week)  # conseil du pin pour le nouvel endroit
 
 
 ## Repère de coupe (jaune), partie retirée pendant qu'on glisse (rouge), bourgeons de la branche (vert)
@@ -1019,10 +1038,13 @@ func _draw_overlay() -> void:
 	var b := d.cross(a)
 	var r := c.radius + 0.004
 	if tool != 3:
+		var mc := Color(1.0, 0.85, 0.1)
+		if sim.whorl > 0 and axis[cut_k] > 0:  # pin : vert, orange ou rouge selon ce que donnera la coupe
+			mc = [Color(0.3, 0.85, 0.3), Color(1.0, 0.55, 0.1), Color(0.95, 0.2, 0.12)][sim.pine_hint(axis[cut_k])[0]]
 		for v in [a, b]:
-			im.surface_set_color(Color(1.0, 0.85, 0.1))
+			im.surface_set_color(mc)
 			im.surface_add_vertex(c.start - v * r)
-			im.surface_set_color(Color(1.0, 0.85, 0.1))
+			im.surface_set_color(mc)
 			im.surface_add_vertex(c.start + v * r)
 	if dragging_cut:
 		for k in sim.subtree(axis[cut_k]):
