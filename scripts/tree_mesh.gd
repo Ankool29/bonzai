@@ -540,7 +540,7 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 
 	var wmax := l * 0.27
 	var b0 := s.end + dir * 0.003  # base du limbe, au bout du pétiole
 	if not selected:
-		col *= Color(0.35, 0.62, 0.22) if h < 0.5 else Color(0.28, 0.55, 0.2)
+		col *= Color(0.24, 0.38, 0.16) if h < 0.5 else Color(0.2, 0.33, 0.15)  # vert sombre légèrement olive
 	var ink := Color(0.08, 0.14, 0.06)
 	var vein := col.darkened(0.25)
 	if sim.leaf_shape == 1:
