@@ -14,10 +14,6 @@ var leaves_mi := MeshInstance3D.new()
 var needles_mi := MeshInstance3D.new()
 var cam := Camera3D.new()
 var world := Node3D.new()
-var pv := SubViewport.new()             # la scène 3D est calculée ici, éventuellement en basse résolution
-var pvc := SubViewportContainer.new()   # et affichée agrandie sans lissage (pixel art)
-var pixel_size := 1                     # 1 : rendu normal ; 2, 3, 4, 6 : taille d'un pixel à l'écran
-var ortho := false                      # vue sans perspective (isométrique)
 var yaw := 0.6
 var pitch := 0.25
 var dist := 0.35
@@ -72,17 +68,7 @@ var pages: Array[HBoxContainer] = []
 
 func _ready() -> void:
 	ui_scale = get_viewport().get_visible_rect().size.x / 720.0
-	pvc.stretch = true
-	pvc.set_anchors_preset(Control.PRESET_FULL_RECT)
-	pvc.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pvc.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	var pm := ShaderMaterial.new()
-	pm.shader = load("res://shaders/pixel.gdshader")
-	pvc.material = pm
-	pv.own_world_3d = true
-	add_child(pvc)
-	pvc.add_child(pv)
-	pv.add_child(world)
+	add_child(world)
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.93, 0.9, 0.84)
@@ -195,8 +181,8 @@ func _build_ui() -> void:
 	var tabs := HBoxContainer.new()
 	box.add_child(tabs)
 	var group := ButtonGroup.new()
-	for k in 5:
-		var t := _button(tabs, ["Temps", "Taille", "Fil", "Arbre", "Rendu"][k], _tab.bind(k))
+	for k in 4:
+		var t := _button(tabs, ["Temps", "Taille", "Fil", "Arbre"][k], _tab.bind(k))
 		t.toggle_mode = true
 		t.button_group = group
 		t.button_pressed = k == 0
@@ -217,17 +203,6 @@ func _build_ui() -> void:
 	_button(pages[3], "Jardin", _show_garden)
 	_button(pages[3], "Rempoter", _show_repot)
 	_button(pages[3], "Recentrer", _recenter)
-	var pix_btn := _button(pages[4], "Pixels : non", Callable())
-	pix_btn.pressed.connect(func():
-		var sizes := [1, 2, 3, 4, 6]
-		_set_pixel(sizes[(sizes.find(pixel_size) + 1) % sizes.size()])
-		pix_btn.text = "Pixels : non" if pixel_size == 1 else "Pixels : ×%d" % pixel_size)
-	var view_btn := _button(pages[4], "Vue : perspective", Callable())
-	view_btn.pressed.connect(func():
-		ortho = not ortho
-		_update_cam()
-		_draw_overlay()
-		view_btn.text = "Vue : isométrique" if ortho else "Vue : perspective")
 	_tab(0)
 	# Chargement : une feuille qui tourne au milieu de l'écran pendant le calcul de la période.
 	loader = Polygon2D.new()
@@ -457,7 +432,7 @@ func _set_tool(k: int) -> void:
 	_update_act()
 
 
-## Onglet k : 0 temps, 1 taille, 2 fil (outil fil), 3 arbre, 4 rendu.
+## Onglet k : 0 temps, 1 taille, 2 fil (outil fil), 3 arbre.
 func _tab(k: int) -> void:
 	for i in pages.size():
 		pages[i].visible = i == k
@@ -576,42 +551,8 @@ func _info(time: float) -> void:
 
 
 func _update_cam() -> void:
-	var t := target
-	var off := Vector3(cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw)) * dist
-	cam.projection = Camera3D.PROJECTION_ORTHOGONAL if ortho else Camera3D.PROJECTION_PERSPECTIVE
-	cam.size = dist * 2.0 * tan(deg_to_rad(cam.fov * 0.5))  # même cadrage qu'en perspective
-	if ortho:
-		off = off.normalized() * maxf(dist, 1.0)  # reculée : sans perspective, la distance ne change pas l'image
-	cam.position = t + off
-	cam.look_at(t)
-	if ortho and pixel_size > 1:
-		# vue sans perspective en pixel art : on cale la caméra sur la grille de pixels pour que l'image
-		# ne « grouille » pas quand on la déplace
-		var texel := cam.size / pv.size.y
-		var bx := cam.global_transform.basis.x
-		var by := cam.global_transform.basis.y
-		t += bx * (snappedf(t.dot(bx), texel) - t.dot(bx)) + by * (snappedf(t.dot(by), texel) - t.dot(by))
-		cam.position = t + off
-		cam.look_at(t)
-
-
-## Distance de vue équivalente (pour garder une taille constante à l'écran), avec ou sans perspective.
-func _view_dist(p: Vector3) -> float:
-	return dist if ortho else cam.global_position.distance_to(p)
-
-
-## Position à l'écran d'un point 3D (la scène peut être calculée en plus petit, puis agrandie).
-func _sp(p: Vector3) -> Vector2:
-	return cam.unproject_position(p) * pixel_size
-
-
-## Rendu : taille des pixels (1 = normal) et vue avec ou sans perspective.
-func _set_pixel(n: int) -> void:
-	pixel_size = n
-	pvc.stretch_shrink = n
-	(pvc.material as ShaderMaterial).set_shader_parameter("pixel", n > 1)
-	_update_cam()
-	_draw_overlay()
+	cam.position = target + Vector3(cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw)) * dist
+	cam.look_at(target)
 
 
 func _input(ev: InputEvent) -> void:
@@ -641,8 +582,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 					var l := _arrow_len(hp)
 					var best := near
 					for k in 3:
-						var a := _sp(hp - AXES[k] * l)
-						var b := _sp(hp + AXES[k] * l)
+						var a := cam.unproject_position(hp - AXES[k] * l)
+						var b := cam.unproject_position(hp + AXES[k] * l)
 						var d := Geometry2D.get_closest_point_to_segment(ev.position, a, b).distance_to(ev.position)
 						if d < best:
 							best = d
@@ -694,8 +635,8 @@ func _unhandled_input(ev: InputEvent) -> void:
 			# tirer une flèche : le bout de la branche se déplace le long de cet axe (rotation autour du point de pli)
 			var hp := _bend_handle()
 			var e: Vector3 = AXES[bend_axis]
-			var sd := _sp(hp + e * _arrow_len(hp)) - _sp(hp)
-			var px := _view_dist(hp) * 2.0 * tan(deg_to_rad(cam.fov * 0.5)) \
+			var sd := cam.unproject_position(hp + e * _arrow_len(hp)) - cam.unproject_position(hp)
+			var px := cam.global_position.distance_to(hp) * 2.0 * tan(deg_to_rad(cam.fov * 0.5)) \
 					/ get_viewport().get_visible_rect().size.y
 			var disp: float = (ev.position - bend_b0).dot(sd.normalized()) * px
 			var arm := hp - sim.segs[axis[cut_k]].start
@@ -746,8 +687,8 @@ func _focus_at(pos: Vector2) -> void:
 	if i < 0:
 		return
 	var s := sim.segs[i]
-	var a := _sp(s.start)
-	var b := _sp(s.end)
+	var a := cam.unproject_position(s.start)
+	var b := cam.unproject_position(s.end)
 	var p := Geometry2D.get_closest_point_to_segment(pos, a, b)
 	var u := clampf((p - a).dot(b - a) / maxf((b - a).length_squared(), 0.0001), 0.0, 1.0)
 	goal_target = s.start.lerp(s.end, u)
@@ -778,7 +719,7 @@ func _select_at(pos: Vector2) -> void:
 
 
 func _cut_screen_pos() -> Vector2:
-	return _sp(sim.segs[axis[cut_k]].start)
+	return cam.unproject_position(sim.segs[axis[cut_k]].start)
 
 
 ## Le repère saute de nœud en nœud le long de la branche, au plus près du doigt.
@@ -789,7 +730,7 @@ func _move_cut(pos: Vector2) -> void:
 		var p := sim.segs[axis[k]].start
 		if cam.is_position_behind(p):
 			continue
-		var d := _sp(p).distance_to(pos)
+		var d := cam.unproject_position(p).distance_to(pos)
 		if d < best_d:
 			best_d = d
 			best = k
@@ -867,7 +808,7 @@ func _ghost_parts() -> Array:
 
 ## Longueur des flèches : constante à l'écran.
 func _arrow_len(p: Vector3) -> float:
-	return _view_dist(p) * 0.07
+	return cam.global_position.distance_to(p) * 0.07
 
 
 ## Croix de trois flèches (x rouge, y vert, z bleu) à la poignée, avec une pointe à chaque bout.
@@ -903,7 +844,7 @@ func _bend_handle() -> Vector3:
 ## Point blanc cerclé de noir, de taille constante à l'écran, tourné vers la caméra.
 func _dot(im: ImmediateMesh, p: Vector3) -> void:
 	var bas := cam.global_transform.basis
-	var r := _view_dist(p) * 0.012
+	var r := cam.global_position.distance_to(p) * 0.012
 	im.surface_begin(Mesh.PRIMITIVE_TRIANGLES)
 	for ring in [[r * 1.35, Color(0.1, 0.1, 0.1)], [r, Color.WHITE]]:
 		var rr: float = ring[0]
@@ -959,8 +900,8 @@ func _pick(pos: Vector2) -> int:
 			continue
 		if cam.is_position_behind(s.start) or cam.is_position_behind(s.end):
 			continue
-		var a := _sp(s.start)
-		var b := _sp(s.end)
+		var a := cam.unproject_position(s.start)
+		var b := cam.unproject_position(s.end)
 		var d := Geometry2D.get_closest_point_to_segment(pos, a, b).distance_to(pos)
 		if d < best_d:
 			best_d = d
