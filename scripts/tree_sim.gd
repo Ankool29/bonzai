@@ -76,7 +76,7 @@ var w_light := 0.35
 var w_up := 0.12
 var jitter := 0.12
 var tip_radius := 0.0004        # jeune rameau : 0,8 mm de diamètre
-var ring_area := 1.5e-6        # cerne annuel : surface ajoutée (m²) par unité de lumière captée au-dessus
+const RING_AREA := 0.9e-6      # cerne annuel : surface ajoutée (m²) par unité de lumière captée au-dessus (étape 23b : 1,5e-6 avant)
 var shed_ratio := 0.04        # lumière par entre-nœud sous laquelle une branche dépérit
 var bud_life := 52 * 8        # durée de vie d'un bourgeon dormant (semaines)
 var backbud_nodes := 4        # nœuds sous la coupe qui peuvent rebourgeonner
@@ -407,17 +407,21 @@ func health() -> float:
 ## Renvoie un message pour le joueur.
 func repot(volume: float, cut: float) -> String:
 	pot_volume = volume
-	roots = minf(roots * (1.0 - cut), volume * ROOTS_PER_LITRE)
+	var n := root.size()
 	root.set_pot(volume)
-	root.prune_far(cut)
+	root.fit_pot()  # les racines qui dépassent du nouveau pot sont coupées : elles comptent dans la part coupée
+	var outside := n - root.size()
+	cut = 1.0 - (1.0 - cut) * root.size() / maxf(n, 1.0)
+	roots = minf(roots * (1.0 - cut), volume * ROOTS_PER_LITRE)
 	reserve *= 1.0 - cut * 0.5  # une part des réserves est dans les racines
 	var w := week % 52
+	var txt := "Les racines qui dépassaient du pot ont été coupées. " if outside > 0 else ""
 	if w >= 6 and w <= 14:
-		return "Rempoté au bon moment."
+		return txt + "Rempoté au bon moment."
 	if cut > 0.0 and w >= 15 and w <= 40:
 		reserve *= 0.5
-		return "Racines coupées en pleine pousse : l'arbre souffre."
-	return "Rempoté hors saison : les racines repartiront au printemps."
+		return txt + "Racines coupées en pleine pousse : l'arbre souffre."
+	return txt + "Rempoté hors saison : les racines repartiront au printemps."
 
 
 ## Coupe le segment i et tout ce qu'il porte. Renvoie false pour la base (on ne coupe pas tout l'arbre).
@@ -552,12 +556,15 @@ func _end_of_year() -> void:
 	# qu'il porte (loi de Pressler). Le bas du tronc, qui porte tout, épaissit le plus : conicité continue,
 	# et le tronc continue de grossir même après une taille. Quand le pot est plein, les racines ne nourrissent
 	# qu'une part de la couronne : le bois produit diminue d'autant (petit pot = tronc qui grossit peu).
-	root.thicken(_sector_light(), ring_area * leaf_area * minf(1.0, roots / maxf(segs[0].light, 0.01)), segs[0].radius)
-	var rf := minf(1.0, roots / maxf(segs[0].light, 0.01))
+	# Étape 23b : le cerne dépend aussi du pot (racines tassées quand il est plein : jusqu'à -60 %) et de la
+	# santé (un arbre sans réserves fait un cerne mince). Les racines grossissent au même rythme que le tronc.
+	var full := clampf((roots / (pot_volume * ROOTS_PER_LITRE) - 0.7) / 0.3, 0.0, 1.0)
+	var rf := minf(1.0, roots / maxf(segs[0].light, 0.01)) * (1.0 - 0.6 * full) * clampf(health(), 0.2, 1.0)
+	root.thicken(_sector_light(), RING_AREA * leaf_area * rf, segs[0].radius)
 	for s in segs:
 		if not s.dry:
 			var old := s.radius
-			s.radius = sqrt(s.radius * s.radius + ring_area * leaf_area * s.light * rf / PI)
+			s.radius = sqrt(s.radius * s.radius + RING_AREA * leaf_area * s.light * rf / PI)
 			if s.wound_r > 0.0:
 				# le bourrelet de cicatrisation avance avec le cerne, deux fois plus vite après la pince concave
 				s.wound_r = maxf(0.0, s.wound_r - (s.radius - old) * (6.0 if s.wound_concave else 3.0))

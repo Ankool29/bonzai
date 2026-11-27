@@ -26,3 +26,23 @@ Validé par le joueur le 27/11/2026. L'étape 23b (travail des racines au rempot
 
 ## Vérification
 - `check/racines.py` : prototype Python du même algorithme, vue de dessus, coupe et collet de trois quarts.
+
+# Étape 23b — Travail des racines et tronc plus lent
+
+Validé par le joueur le 27/11/2026.
+
+## Tronc
+- En pot, un arbre pousse environ cinq fois moins vite qu'en pleine terre (Toronto Master Gardeners) ; orme ou érable champêtre en pleine terre : de 1,3 cm à 5-7,5 cm de diamètre en trois ans (bonsai4me) ; en pot de bonsaï, racines à l'étroit et taille régulière, le tronc ne grossit plus que très lentement (bonsaibark) ; pot trop petit : épaississement quasi nul (bonsai4me).
+- Cerne de base 0,6 fois l'ancien (`RING_AREA` 0,9e-6, appliqué aussi aux anciens arbres).
+- Pot plein (racines au-delà de 70 % de la limite du pot) : jusqu'à -60 %. Santé (réserves / racines) : cerne × santé, au moins 20 %. Le rapport racines / houppier limite toujours. Les racines suivent les mêmes facteurs.
+- Diamètre du tronc affiché en mm dans les infos, pour régler à l'usage.
+
+## Rempotage
+- « Rempoter » : l'arbre sort du pot, toute la charpente est dessinée, la caméra descend au collet.
+- Toucher une racine la choisit (surlignée avec ce qui en part) ; « Couper la racine » la retire ; 2 ou 3 jeunes racines repartent du bout coupé. Le pivot du pin se retire de la même façon.
+- Tuile : posée ou retirée depuis ce mode ; tant qu'elle est là, les racines au-dessus d'elle (6 cm autour du tronc) ne descendent plus sous 1,2 cm.
+- « Replanter » : choix du pot ; la part coupée est la vraie part de racines retirée ; les racines qui dépassent du nouveau pot sont coupées (comptées dans la part coupée). Réaction de l'arbre inchangée (réserves, saison).
+
+## Plus tard (idées du joueur)
+- Arbre sur rocher (ishitsuki) : le rocher devient un obstacle dans la terre, les racines suivent sa surface et l'enserrent.
+- Mettre à nu plus de racines : hauteur de plantation réglable au rempotage (on remonte l'arbre / on baisse la terre).

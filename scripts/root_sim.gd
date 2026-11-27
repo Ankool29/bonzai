@@ -11,6 +11,8 @@ const CELL := 0.01         # grille de terre
 const MAX := 1500          # plafond de segments
 const MIN_R := 0.0008
 const SECTORS := 8
+const TILE_R := 0.06       # tuile sous le tronc (étape 23b) : les racines au-dessus ne descendent plus
+const TILE_Y := -0.012
 
 var p0 := PackedVector3Array()
 var p1 := PackedVector3Array()
@@ -25,6 +27,7 @@ var hz := 0.10
 var depth := 0.048
 var sp := {}               # réglages de l'espèce : n, tap, dip, branch, mix
 var rng := RandomNumberGenerator.new()  # hasard propre : la pousse des branches ne change pas
+var tile := false
 
 
 func setup(species: Dictionary, volume: float) -> void:
@@ -56,8 +59,8 @@ func plant(seed_value: int) -> void:
 		_add(c + Vector3(cos(a), 0, sin(a)) * 0.002, Vector3(cos(a) * cos(0.1), -sin(0.1), sin(a) * cos(0.1)), -1, 0)
 
 
-func _add(a: Vector3, d: Vector3, parent: int, o: int) -> int:
-	var b := a + d * RI
+func _add(a: Vector3, d: Vector3, parent: int, o: int, l := RI) -> int:
+	var b := a + d * l
 	p0.append(a)
 	p1.append(b)
 	dir.append(d)
@@ -81,7 +84,11 @@ func _free(p: Vector3) -> float:
 
 
 func _inside(p: Vector3, m := 0.004) -> bool:
-	return absf(p.x) < hx - m and absf(p.z) < hz - m and p.y > -depth + m and p.y < 0.0
+	return absf(p.x) < hx - m and absf(p.z) < hz - m and p.y > -depth + m and p.y < 0.0 and not _under_tile(p)
+
+
+func _under_tile(p: Vector3) -> bool:
+	return tile and p.y < TILE_Y and Vector2(p.x, p.z).length() < TILE_R
 
 
 ## Direction suivante d'une pointe : à fleur de terre près du tronc, plus profond au-delà (selon l'ordre).
@@ -109,7 +116,7 @@ func _wall(p: Vector3, d: Vector3) -> Vector3:
 			d.z = 0.0
 		if nx.y <= -depth + 0.004 and d.y < 0.0:
 			d.y = 0.0
-		if nx.y >= 0.0 and d.y > 0.0:
+		if (nx.y >= 0.0 and d.y > 0.0) or (_under_tile(nx) and d.y < 0.0):
 			d.y = 0.0
 		d = d.normalized() if d.length() > 0.000001 else Vector3(-p.z, 0, p.x).normalized()
 	return d
@@ -181,22 +188,37 @@ func sector(p: Vector3) -> int:
 	return int(fposmod(atan2(p.z, p.x), TAU) / TAU * SECTORS) % SECTORS
 
 
-## Rempotage : retire la part « cut » de la longueur, en commençant par les racines les plus éloignées du tronc.
-func prune_far(cut: float) -> void:
-	if cut <= 0.0 or p0.size() == 0:
-		return
-	var idx := range(p0.size())
-	idx.sort_custom(func(a, b): return p1[a].length_squared() > p1[b].length_squared())
+## Coupe la racine i et tout ce qui en part ; 2 ou 3 jeunes racines repartent du bout coupé.
+## Renvoie le nombre de segments retirés.
+func cut(i: int) -> int:
+	var dead := {i: true}
+	for j in range(i + 1, p0.size()):
+		if dead.has(par[j]):
+			dead[j] = true
+	var at := p0[i]
+	var d := dir[i]
+	var o := order[i]
+	var pc := par[i]
+	var map := _remove(dead)
+	var p := map[pc] if pc >= 0 else -1
+	for k in 2 + rng.randi() % 2:
+		var a := rng.randf_range(-1.2, 1.2)
+		_add(at, _wall(at, Vector3(d.x * cos(a) - d.z * sin(a), 0.0, d.x * sin(a) + d.z * cos(a))), p, mini(o + 1, 4), 0.003)
+	return dead.size()
+
+
+## Après le choix du pot : les racines qui en dépasseraient sont coupées.
+func fit_pot() -> void:
 	var dead := {}
-	for k in int(p0.size() * cut):
-		dead[idx[k]] = true
-	for i in p0.size():  # un segment dont le parent est retiré l'est aussi
-		if par[i] >= 0 and dead.has(par[i]):
+	for i in p0.size():
+		var q := p1[i]
+		if dead.has(par[i]) or absf(q.x) > hx or absf(q.z) > hz or q.y < -depth:
 			dead[i] = true
-	_remove(dead)
+	if not dead.is_empty():
+		_remove(dead)
 
 
-func _remove(dead: Dictionary) -> void:
+func _remove(dead: Dictionary) -> PackedInt32Array:
 	var map := PackedInt32Array()
 	map.resize(p0.size())
 	var n0 := PackedVector3Array()
@@ -229,6 +251,7 @@ func _remove(dead: Dictionary) -> void:
 	tip = nt
 	order = no
 	_rebuild_occ()
+	return map
 
 
 func _rebuild_occ() -> void:
@@ -240,7 +263,7 @@ func _rebuild_occ() -> void:
 
 func to_data() -> Dictionary:
 	return {"p0": p0, "p1": p1, "dir": dir, "par": par, "rad": rad, "tip": tip, "order": order,
-			"seed": rng.seed, "state": rng.state}
+			"seed": rng.seed, "state": rng.state, "tile": tile}
 
 
 func from_data(d: Dictionary) -> void:
@@ -253,4 +276,5 @@ func from_data(d: Dictionary) -> void:
 	order = d["order"]
 	rng.seed = d["seed"]
 	rng.state = d["state"]
+	tile = d.get("tile", false)
 	_rebuild_occ()
