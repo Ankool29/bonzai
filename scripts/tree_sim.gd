@@ -657,7 +657,10 @@ func _grow() -> void:
 			s.term_bud = false
 			s.relay = false
 			s.main_child = _shoot(i, d, s.v_term)
-		if s.lat_bud and (s.v_lat >= 1.0 if summer else s.v_lat + rng.randf() >= 1.0):
+		# Inhibition par le houppier : un bourgeon dormant passé deux hivers ne part plus de lui-même
+		# (vieux bois du tronc) ; seule une coupe proche le libère. Les rejets d'une taille sévère naissent neufs.
+		var dormant := s.lat_bud_age > 52 and s.release <= 1.0
+		if s.lat_bud and not dormant and (s.v_lat >= 1.0 if summer else s.v_lat + rng.randf() >= 1.0):
 			s.lat_bud = false
 			s.lat_child = _shoot(i, s.lat_dir, s.v_lat)
 		s.v_term = 0.0
