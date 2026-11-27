@@ -20,7 +20,7 @@ uniform vec3 tone1 : source_color = vec3(0.56, 0.55, 0.5);
 uniform vec3 tone2 : source_color = vec3(0.5, 0.52, 0.42);
 uniform vec3 tone3 : source_color = vec3(0.72, 0.5, 0.3);
 uniform vec3 fissure : source_color = vec3(0.33, 0.28, 0.24);
-uniform vec3 stones[3];  // gravier : x, z, rayon des pierres
+uniform vec3 stones[3];  // gravier : x, z, rayon des pierres (coordonnées du monde)
 
 varying vec3 wpos;
 varying float young_k;
@@ -121,7 +121,7 @@ void fragment() {
 		for (int i = 0; i < 3; i++) {
 			d = min(d, length(wpos.xz - stones[i].xy) - stones[i].z);
 		}
-		float l = d < 0.72 ? d / 0.16 : wpos.z / 0.16;  // ondes concentriques près des pierres, sinon lignes droites
+		float l = d < 0.36 ? d / 0.08 : wpos.z / 0.08;  // ondes concentriques près des pierres, sinon lignes droites
 		c = albedo.rgb * (fract(l) < 0.22 ? 0.86 : 1.0) * (h(floor(wpos.xz / 0.02), 2.0) < 0.2 ? 0.95 : 1.0);
 	}
 	c = mix(c, autumn_color, autumn_k * 0.85);

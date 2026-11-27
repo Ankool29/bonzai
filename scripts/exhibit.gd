@@ -5,20 +5,24 @@ extends Node3D
 ## palissade de bambou, lanterne, tsukubai, tablettes (tana) et socle d'honneur.
 
 const STONES := [Vector3(0.6, -1.6, 0.42), Vector3(1.3, -1.2, 0.25), Vector3(-0.1, -2.3, 0.2)]  # x, z, rayon
-const TANAS := [Vector3(-1.6, 1.7, 3.0), Vector3(1.9, 0.2, 3.0)]  # x, z, longueur
+const TANAS := [Vector3(-1.6, 1.7, 3.6), Vector3(1.9, 0.2, 3.6)]  # x, z, longueur
 const TANA_TOP := 0.81
 const HONOR := Vector3(-2.9, 0.55, -1.6)  # dessus du tronçon d'honneur
+const S := 0.5  # décor réduit de moitié autour des arbres (taille réelle) : les bonsaïs se voient mieux
 
 var slots: Array[Vector3] = []   # dessus de chaque emplacement
 var nodes := {}                  # emplacement -> arbre dessiné (cache)
 var plus := {}                   # emplacement -> « + »
+var decor := Node3D.new()
 
 
 func _init() -> void:
 	for t in TANAS:
 		for i in 4:
-			slots.append(Vector3(t.x + (i - 1.5) * t.z / 4.0, TANA_TOP, t.y))
-	slots.append(HONOR)
+			slots.append(Vector3(t.x + (i - 1.5) * t.z / 4.0, TANA_TOP, t.y) * S)
+	slots.append(HONOR * S)
+	decor.scale = Vector3.ONE * S
+	add_child(decor)
 	_decor()
 	for s in slots.size():
 		var l := Label3D.new()
@@ -30,7 +34,7 @@ func _init() -> void:
 		l.outline_modulate = Color(0.38, 0.27, 0.2)
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		l.no_depth_test = true
-		l.position = slots[s] + Vector3(0, 0.2, 0)
+		l.position = slots[s] + Vector3(0, 0.12, 0)
 		add_child(l)
 		plus[s] = l
 
@@ -106,13 +110,13 @@ func _cyl(r: float, h: float, c: Color, pos: Vector3, seg := 10, outline := true
 	m.height = h
 	m.radial_segments = seg
 	m.rings = 1
-	return _mesh(self, m, _mat(c, outline), pos + Vector3(0, h / 2.0, 0))
+	return _mesh(decor, m, _mat(c, outline), pos + Vector3(0, h / 2.0, 0))
 
 
 func _box(size: Vector3, c: Color, pos: Vector3) -> MeshInstance3D:
 	var m := BoxMesh.new()
 	m.size = size
-	return _mesh(self, m, _mat(c, true), pos + Vector3(0, size.y / 2.0, 0))
+	return _mesh(decor, m, _mat(c, true), pos + Vector3(0, size.y / 2.0, 0))
 
 
 ## Matériau du décor : contour plus épais que celui des arbres, le jardin se voit de loin.
@@ -130,8 +134,11 @@ func _decor() -> void:
 	var g := PlaneMesh.new()
 	g.size = Vector2(10, 8)
 	var gm := TreeMesh.toon(5, Color(0.84, 0.82, 0.75))
-	gm.set_shader_parameter("stones", PackedVector3Array(STONES))
-	_mesh(self, g, gm, Vector3.ZERO)
+	var st := PackedVector3Array()
+	for v in STONES:
+		st.append(v * S)
+	gm.set_shader_parameter("stones", st)
+	_mesh(decor, g, gm, Vector3.ZERO)
 	# îlots de mousse aux bords irréguliers
 	for mo in [[-2.9, -1.6, 1.5], [-2.2, 2.0, 1.9], [3.2, 2.2, 1.4], [3.6, -2.5, 1.0]]:
 		for j in 3:
@@ -175,7 +182,7 @@ func _decor() -> void:
 		var r := rng.randf_range(0.45, 0.75)
 		sp.radius = r
 		sp.height = r * 1.7
-		_mesh(self, sp, _mat(Color(0.73, 0.28, 0.19), true),
+		_mesh(decor, sp, _mat(Color(0.73, 0.28, 0.19), true),
 				Vector3(2.5 + rng.randf_range(-1.3, 1.3), 2.6 + rng.randf_range(-0.3, 0.6), 3.0 + rng.randf_range(-0.6, 0.4)))
 	# tablettes d'exposition : planche de bois sur deux poteaux de pierre
 	for t in TANAS:
