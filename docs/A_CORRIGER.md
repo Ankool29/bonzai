@@ -14,3 +14,4 @@
 - Pin : la coupe des chandelles donne des bourgeons, mais beaucoup ne partent pas en pousse d'été (vigueur faible) : à régler après essais.
 - Étape 22 : le jardin a 9 places ; une ancienne sauvegarde de plus de 9 arbres garde les suivants invisibles. Pas d'éclairage de saison au jardin (chaque arbre a sa propre date).
 - Corrigé : les vieux bourgeons dormants du bas du tronc (jusqu'à 8 ans) partaient chaque printemps sous un houppier plein ; passé deux hivers, ils ne partent plus que libérés par une coupe proche. Une coupe faite après la dernière poussée (semaine 30) perd sa levée de dominance à la fin de l'année.
+- Étape 23a : le nebari décoratif est remplacé par les racines simulées. Les anciens arbres reçoivent une charpente reconstituée au chargement (épaisseurs données d'un coup). Le rempotage coupe d'abord les racines les plus éloignées (coupe à la main en 23b). Les racines ne s'animent pas pendant l'avance du temps (elles changent d'un coup en fin d'année).
