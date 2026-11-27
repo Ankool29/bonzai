@@ -127,7 +127,7 @@ func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 			# de feuilles sans s'allonger (2 feuilles, 1 pour les bourgeons opposés). Purement visuel.
 			if sim.leaf_years == 0 and weak[i] == 0 and s.lat_bud and s.lat_child < 0:
 				var age := year_now - floorf(s.born / 52.0)
-				if age >= 1.0 and age <= 5.0 and spring <= t:
+				if age >= 1.0 and age <= sim.spur_years and spring <= t:
 					_foliage(s, false, marked.has(i), 0.6, 0.8, spring)
 					if not sim.opposite:
 						_foliage(s, false, marked.has(i), -0.6, 0.55, spring)
@@ -535,7 +535,7 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 
 			_needles(s, h, weak, selected, gone)
 		return
 	var b := s.born if born < 0.0 else born
-	var fall := floorf(b / 52.0) * 52.0 + 44.0 + h * 4.0  # chute étalée sur novembre
+	var fall := floorf(b / 52.0) * 52.0 + 44.0 + h * sim.fall_span  # chute étalée sur novembre (ginkgo : quelques jours)
 	if fall < t0:
 		return
 	if weak:
@@ -562,6 +562,9 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 
 	var vein := col.darkened(0.25)
 	if sim.leaf_shape == 1:
 		_palmate(s.end, dir, side, nrm, l, 5 if h < 0.6 else 7, col, ink, vein)
+		return
+	if sim.leaf_shape == 2:
+		_fan(s.end, dir, side, nrm, l, born < 0.0, col, ink, vein)  # rosette des rameaux courts : sans échancrure
 		return
 	# contour : côté droit de la base à la pointe, puis côté gauche (plus étroit) de la pointe à la base
 	var cont: Array[Vector3] = [b0]
@@ -625,6 +628,36 @@ func _palmate(node: Vector3, dir: Vector3, side: Vector3, nrm: Vector3, l: float
 	_line(node, b0, 0.0003, nrm, ink)
 	for t in tips:
 		_line(b0, b0 + (t - b0) * 0.9, 0.00012, nrm, vein)
+
+
+## Feuille de ginkgo : long pétiole, limbe en éventail à base en coin, bord ondulé ; échancrure au milieu
+## sur les pousses longues (feuille bilobée). Nervures en éventail. Vérifiée au dessin : check/fan.py.
+func _fan(node: Vector3, dir: Vector3, side: Vector3, nrm: Vector3, l: float, notch: bool, col: Color, ink: Color, vein: Color) -> void:
+	var a_max := deg_to_rad(68.0)
+	var r := l * 0.6
+	var b0 := node + dir * l * 0.4  # base du limbe, au bout du pétiole
+	var cont: Array[Vector3] = []
+	for k in 17:
+		var a := -a_max + 2.0 * a_max * k / 16.0
+		var rr := r * (1.0 - 0.08 * pow(a / a_max, 2.0)) * (1.0 + 0.025 * sin(k * 2.3))
+		if notch:
+			rr *= 1.0 - 0.42 * exp(-pow(a / 0.13, 2.0))
+		cont.append(b0 + (dir * cos(a) + side * sin(a)) * rr)
+	for k in 16:
+		_tri(b0, cont[k], cont[k + 1], nrm, col)
+	cont.push_front(b0)
+	cont.append(b0)
+	for k in cont.size() - 1:  # contour fin
+		var p0 := cont[k]
+		var p1 := cont[k + 1]
+		var o0 := p0 + (p0 - b0).normalized() * 0.00035 if p0 != b0 else p0
+		var o1 := p1 + (p1 - b0).normalized() * 0.00035 if p1 != b0 else p1
+		_tri(p0, o0, o1, nrm, ink)
+		_tri(p0, o1, p1, nrm, ink)
+	_line(node, b0, 0.0003, nrm, ink)
+	for a in [-50.0, -30.0, -10.0, 10.0, 30.0, 50.0]:
+		var t := deg_to_rad(a)
+		_line(b0, b0 + (dir * cos(t) + side * sin(t)) * r * 0.8, 0.0001, nrm, vein)
 
 
 ## Demi-largeur angulaire d'un lobe d'érable (en fraction de l'écart entre lobes) : plus large au milieu, pointe aiguë.

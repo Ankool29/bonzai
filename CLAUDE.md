@@ -15,8 +15,8 @@ Godot 4.7, GDScript, cible mobile (Galaxy S25 Ultra). Le joueur parle français 
 ## Plan du code
 - `scripts/tree_sim.gd` (`TreeSim`) : simulation de l'arbre (segments, bourgeons, grille d'ombre, poussées, élagage naturel, taille, ligature). Valeurs de l'orme par défaut, remplacées par une fiche espèce.
 - `scripts/root_sim.gd` (`RootSim`) : charpente racinaire dans le pot (pousse vers la terre libre, encerclement, grossissement par secteurs, nebari), portée par `TreeSim.root`.
-- `scripts/species.gd` (`Species`) : fiches espèces (orme, pin, érable).
-- `scripts/tree_mesh.gd` (`TreeMesh`) : bois (anneaux continus, fourches en Y), racines qui affleurent, feuilles d'orme et d'érable, aiguilles de pin en géométrie, dates d'animation par sommet, matériaux cel shading.
+- `scripts/species.gd` (`Species`) : fiches espèces (orme, pin, érable, ginkgo), liste `Species.ALL`.
+- `scripts/tree_mesh.gd` (`TreeMesh`) : bois (anneaux continus, fourches en Y), racines qui affleurent, feuilles d'orme, d'érable et de ginkgo, aiguilles de pin en géométrie, dates d'animation par sommet, matériaux cel shading.
 - `scripts/garden.gd` (`Garden`) : jardin (tous les arbres, chacun sa date et sa place ; seul l'arbre ouvert pousse), sauvegarde dans `user://` (un index + un fichier par arbre).
 - `scripts/exhibit.gd` (`Exhibit`) : jardin d'exposition 3D (décor japonais, 9 emplacements, arbres dessinés gardés en cache).
 - `scripts/main.gd` : scène (soleil et ombres, pot), caméra au doigt, jardin d'exposition ↔ écran de travail, sélection, repère de coupe, outils de taille et fil, boutons ; avance du temps (calcul en fil de calcul puis animation). Scène : `scenes/main.tscn`.

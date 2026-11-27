@@ -543,7 +543,7 @@ func _show_add(s: int) -> void:
 	var box := VBoxContainer.new()
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	garden_panel.add_child(box)
-	for sp in [Species.ELM, Species.PINE, Species.MAPLE]:
+	for sp in Species.ALL:
 		_button(box, "+ " + str(sp["name"]), func():
 			garden_panel.visible = false
 			garden.add(sp, s)
