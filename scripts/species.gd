@@ -46,6 +46,9 @@ const ELM := {
 	"light_exp": true,
 	"whorl": 0,          # bourgeon latéral à chaque nœud
 	"leaf_years": 0,     # caduc
+	"heal": 1.0,          # vitesse de fermeture des plaies
+	"fall_span": 4.0,     # semaines sur lesquelles tombent les feuilles
+	"spur_years": 5.0,    # âge max des rameaux courts qui portent une rosette
 }
 
 ## Pin noir du Japon : une poussée par an (chandelle), bourgeons en couronne au bout de la pousse,
@@ -93,6 +96,9 @@ const PINE := {
 	"light_exp": false,
 	"whorl": 4,
 	"leaf_years": 3,
+	"heal": 1.0,          # vitesse de fermeture des plaies
+	"fall_span": 4.0,     # semaines sur lesquelles tombent les feuilles
+	"spur_years": 5.0,    # âge max des rameaux courts qui portent une rosette
 }
 
 
@@ -140,4 +146,61 @@ const MAPLE := {
 	"light_exp": true,
 	"whorl": 0,
 	"leaf_years": 0,
+	"heal": 1.0,          # vitesse de fermeture des plaies
+	"fall_span": 4.0,     # semaines sur lesquelles tombent les feuilles
+	"spur_years": 5.0,    # âge max des rameaux courts qui portent une rosette
 }
+
+## Ginkgo : pousses longues aux feuilles espacées, rameaux courts (rosettes) très durables, pousse lente,
+## couronne ouverte, feuilles en éventail jaune vif en automne, tombées en quelques jours.
+const GINKGO := {
+	"name": "Ginkgo biloba",
+	# Doc (étape 25) : Critchfield 1970 (Bot. Gaz., USDA) et Leigh et al. 2011 (New Phytologist) : rameaux courts
+	# aux entre-nœuds minimes, feuilles préformées en éventail ; pousses longues aux feuilles bilobées.
+	# Conifer Society : rameaux courts dès le bois de 2 ans, 1-2 cm en plusieurs années, jaune vif à l'automne,
+	# chute en 1 à 15 jours. EBSCO : rosettes chaque année pendant des années puis allongement possible.
+	# UF/IFAS ST-273 : pousse lente, couronne ouverte. Bonsai Nut : rabattage sévère possible, repart sur le
+	# tronc et rejette du pied ; Phoenix Bonsai : les cicatrices ne se referment pas. Prototype : check/gink.py.
+	"bark_colors": [Color(0.5, 0.47, 0.42), Color(0.58, 0.55, 0.5), Color(0.47, 0.42, 0.36), Color(0.28, 0.24, 0.2)],
+	"foliage_size": 0.03,
+	"internode": 0.025,    # pousse longue : feuilles espacées
+	"alpha": 1.4,          # pousse lente (environ la moitié de la hauteur de l'orme à 6 ans, au portage)
+	"apical": 0.55,
+	"max_per_flush": 4,
+	"preformed": 0,
+	"spur_len": 0.3,       # rameau court : presque pas d'allongement
+	"leaf_area": 0.5,
+	"sympodial": false,
+	"branch_angle": deg_to_rad(50.0),
+	"phyllotaxy": deg_to_rad(137.5),  # alterne spiralée
+	"w_light": 0.25,
+	"w_up": 0.12,          # jeune arbre élancé
+	"jitter": 0.08,        # branches un peu erratiques
+	"shed_ratio": 0.04,
+	"bud_life": 52 * 10,
+	"backbud_chance": 0.6,
+	"capacity": 6000,
+	"max_sprouts": 6,      # rejette volontiers après une taille sévère, jusqu'au pied
+	# Racines (étape 23a) — ginkgo : racines profondes, pivotantes.
+	"root_n": 5,
+	"root_tap": 1,
+	"root_dip": 10.0,
+	"root_branch": 0.3,
+	"root_mix": 0.4,
+	"flushes": {15: 1.0, 22: 0.25},  # une vraie poussée au printemps, à peine une reprise en été
+	"leaf_shape": 2,
+	"young_color": Color(0.5, 0.45, 0.38),
+	"autumn_color": Color(0.95, 0.8, 0.15),
+	"opposite": false,
+	"fork": false,
+	"bud_color": Color(0.45, 0.36, 0.26),
+	"bud_size": 0.0015,
+	"light_exp": true,
+	"whorl": 0,
+	"leaf_years": 0,
+	"heal": 0.15,          # plaies qui ne se referment presque pas
+	"fall_span": 1.0,      # chute en quelques jours
+	"spur_years": 12.0,    # rosettes pendant de nombreuses années
+}
+
+const ALL := [ELM, PINE, MAPLE, GINKGO]

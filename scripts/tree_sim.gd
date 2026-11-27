@@ -53,7 +53,7 @@ class Seg:
 var name := "Orme de Chine"
 var bark_colors := [Color(0.55, 0.52, 0.47), Color(0.63, 0.6, 0.55), Color(0.62, 0.45, 0.32), Color(0.33, 0.28, 0.24)]
 var foliage_size := 0.02     # longueur d'une feuille avec son pétiole (m)
-var leaf_shape := 0           # 0 : feuille simple (orme), 1 : palmée (érable)
+var leaf_shape := 0           # 0 : feuille simple (orme), 1 : palmée (érable), 2 : éventail (ginkgo)
 var young_color := Color(0.55, 0.47, 0.38)  # rameau de l'année
 var autumn_color := Color(0.82, 0.6, 0.2)
 var bud_color := Color(0.42, 0.28, 0.18)
@@ -127,6 +127,9 @@ var layout := 0               # change quand des segments sont retirés (les ind
 var fallen: Array = []        # rameaux morts tombés pendant la période : [début, fin, rayon, séchage, chute]
 var rng := RandomNumberGenerator.new()
 var planted := 10             # semaine de mise en pot
+var heal := 1.0               # vitesse de fermeture des plaies (ginkgo : presque nulle)
+var fall_span := 4.0          # semaines de chute des feuilles
+var spur_years := 5.0         # âge max des rameaux courts à rosette
 var root := RootSim.new()     # charpente racinaire (étape 23a), sauvegardée à part
 const ROOT_WEEKS := [14, 22, 36]  # poussées de racines : printemps, début et fin d'été
 
@@ -185,10 +188,10 @@ func from_data(d: Dictionary) -> void:
 	capacity = maxi(capacity, 6000)  # les arbres plantés avant l'étape 15 avaient 1500 ou 3000
 	# L'apparence suit toujours la fiche espèce actuelle (un réglage graphique s'applique aussi aux anciens arbres).
 	var species: Dictionary = Species.ELM
-	for sp in [Species.ELM, Species.PINE, Species.MAPLE]:
+	for sp in Species.ALL:
 		if sp["name"] == name:
 			species = sp
-			for k in ["bud_size", "bud_color", "bark_colors", "young_color", "autumn_color", "foliage_size"]:
+			for k in ["bud_size", "bud_color", "bark_colors", "young_color", "autumn_color", "foliage_size", "heal", "fall_span", "spur_years"]:
 				if sp.has(k):
 					set(k, sp[k])
 	if not d.has("roots"):  # arbre sauvegardé avant l'étape 17
@@ -643,7 +646,7 @@ func _end_of_year() -> void:
 			s.radius = sqrt(s.radius * s.radius + RING_AREA * leaf_area * s.light * rf / PI)
 			if s.wound_r > 0.0:
 				# le bourrelet de cicatrisation avance avec le cerne, deux fois plus vite après la pince concave
-				s.wound_r = maxf(0.0, s.wound_r - (s.radius - old) * (6.0 if s.wound_concave else 3.0))
+				s.wound_r = maxf(0.0, s.wound_r - (s.radius - old) * (6.0 if s.wound_concave else 3.0) * heal)
 				if s.wound_r == 0.0:
 					s.wound_full = 0.0
 	# Les rameaux morts fins tombent d'eux-mêmes au bout d'un an ; le gros bois mort reste.
