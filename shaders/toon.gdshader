@@ -1,7 +1,7 @@
 // Cel shading : éclairage arrondi à 3 tons nets (lumière, mi-teinte, ombre), ombres portées nettes.
 // L'ombre prend la couleur de la lumière ambiante (bleutée), pas du gris.
 // pattern : 0 = couleur de sommet × albedo ; 1 = écorce d'orme (plaques) ; 2 = écorce de pin (fissures) ;
-// 3 = terre (granulés) ; 4 = écorce d'érable (lisse, stries). Écorce : UV.x = fraction du tour, UV.y = longueur (m), UV2.x = cellules de 2,5 mm
+// 3 = terre (granulés) ; 4 = écorce d'érable (lisse, stries) ; 5 = gravier ratissé (lignes, ondes autour des pierres). Écorce : UV.x = fraction du tour, UV.y = longueur (m), UV2.x = cellules de 2,5 mm
 // sur le tour ; couleur de sommet rgb = teinte, a = part de teinte unie (rameau de l'année, bois mort, sélection).
 shader_type spatial;
 render_mode cull_disabled, specular_disabled;
@@ -20,6 +20,7 @@ uniform vec3 tone1 : source_color = vec3(0.56, 0.55, 0.5);
 uniform vec3 tone2 : source_color = vec3(0.5, 0.52, 0.42);
 uniform vec3 tone3 : source_color = vec3(0.72, 0.5, 0.3);
 uniform vec3 fissure : source_color = vec3(0.33, 0.28, 0.24);
+uniform vec3 stones[3];  // gravier : x, z, rayon des pierres
 
 varying vec3 wpos;
 varying float young_k;
@@ -115,6 +116,13 @@ void fragment() {
 	} else if (pattern == 3) {
 		float k = h(floor(wpos.xz / 0.004), 4.0);
 		c = albedo.rgb * (k < 0.3 ? 1.25 : (k < 0.6 ? 1.0 : 0.8));
+	} else if (pattern == 5) {
+		float d = 9.0;
+		for (int i = 0; i < 3; i++) {
+			d = min(d, length(wpos.xz - stones[i].xy) - stones[i].z);
+		}
+		float l = d < 0.72 ? d / 0.16 : wpos.z / 0.16;  // ondes concentriques près des pierres, sinon lignes droites
+		c = albedo.rgb * (fract(l) < 0.22 ? 0.86 : 1.0) * (h(floor(wpos.xz / 0.02), 2.0) < 0.2 ? 0.95 : 1.0);
 	}
 	c = mix(c, autumn_color, autumn_k * 0.85);
 	ALBEDO = c;

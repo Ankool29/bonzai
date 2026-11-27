@@ -7,6 +7,8 @@ const INDEX := "user://jardin.save"
 var trees: Array[TreeSim] = []
 var names: Array[String] = []
 var ids: Array[int] = []
+var slots: Array[int] = []   # emplacement de chaque arbre dans le jardin d'exposition (0 à SLOTS - 1)
+const SLOTS := 9
 var current := 0
 var next_id := 1
 
@@ -27,16 +29,18 @@ func load_all() -> void:
 		trees.append(t)
 		ids.append(d["ids"][k])
 		names.append(d["names"][k])
+		slots.append(d["slots"][k] if d.has("slots") else k)  # anciennes sauvegardes : places dans l'ordre
 	current = clampi(current, 0, maxi(trees.size() - 1, 0))
 
 
-## Nouvel arbre, mis en pot début mars de l'année 1 ; devient l'arbre ouvert.
-func add(species: Dictionary) -> void:
+## Nouvel arbre à l'emplacement donné, mis en pot début mars de l'année 1 ; devient l'arbre ouvert.
+func add(species: Dictionary, slot: int) -> void:
 	var t := TreeSim.new()
 	t.reset(randi(), species)
 	trees.append(t)
 	ids.append(next_id)
 	names.append("%s %d" % [t.name.split(" ")[0], next_id])
+	slots.append(slot)
 	next_id += 1
 	current = trees.size() - 1
 	save_tree(current)
@@ -48,13 +52,19 @@ func remove(i: int) -> void:
 	trees.remove_at(i)
 	ids.remove_at(i)
 	names.remove_at(i)
+	slots.remove_at(i)
 	current = clampi(current if current < i else current - 1, 0, trees.size() - 1)
 	save_index()
 
 
 func save_index() -> void:
 	var f := FileAccess.open(INDEX, FileAccess.WRITE)
-	f.store_var({"current": current, "next_id": next_id, "ids": ids, "names": names})
+	f.store_var({"current": current, "next_id": next_id, "ids": ids, "names": names, "slots": slots})
+
+
+## Arbre posé sur un emplacement, -1 s'il est libre.
+func at(slot: int) -> int:
+	return slots.find(slot)
 
 
 func save_tree(i: int) -> void:
