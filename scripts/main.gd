@@ -729,7 +729,7 @@ func _draw_overlay() -> void:
 	if tool == 3:  # fil : un rond autour de la branche, là où elle pliera
 		for k in 16:
 			for q in [k, k + 1]:
-				var u := TAU * q / 16.0
+				var u: float = TAU * q / 16.0
 				im.surface_set_color(Color(1.0, 0.85, 0.1))
 				im.surface_add_vertex(c.start + (a * cos(u) + b * sin(u)) * r)
 	else:
