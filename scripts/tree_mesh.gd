@@ -36,6 +36,7 @@ var cont := PackedInt32Array()  # enfant qui continue l'axe (le plus gros), -1 a
 var lverts := PackedVector3Array()  # feuilles
 var lnorms := PackedVector3Array()
 var lcols := PackedColorArray()
+var wire_phase := {}  # angle de la spirale du fil au bout de chaque entre-nœud (continuité d'un entre-nœud à l'autre)
 var lanim := [Vector4.ZERO, Vector3.ZERO]  # dates et point d'attache de la feuille en cours
 
 
@@ -130,6 +131,8 @@ func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 						_foliage(s, false, marked.has(i), -0.6, 0.55, spring)
 		if not s.dry and seg_f[i] >= 1.0 and t - s.born < 156.0:
 			_buds(s)
+		if seg_f[i] > 0.0 and (s.wire > 0 or s.mark > 0.05):
+			_wire_helix(i, s)
 		if s.wound_r > 0.0:
 			_wound(s)
 	if n > 0:
@@ -285,6 +288,44 @@ func _buds(s: TreeSim.Seg) -> void:
 		_bud(s.end + side * s.radius * 0.8, (s.lat_dir.normalized() + axis).normalized(), sim.bud_size * small, born)
 	if s.term_bud and s.main_child < 0:
 		_bud(s.end, axis, sim.bud_size * (1.0 if sim.whorl > 0 else 1.2), born)
+
+
+## Fil de ligature en spirale à 45° autour de l'entre-nœud (aluminium, cuivre pour le pin), d'un tiers du
+## diamètre de la branche, qui s'enfonce quand il mord ; après son retrait, marque sombre dans l'écorce.
+func _wire_helix(i: int, s: TreeSim.Seg) -> void:
+	var d := s.end - s.start
+	var l := d.length()
+	if l < 0.00001:
+		return
+	var wr := maxf(0.0002, s.radius / 3.0)
+	var col: Color = (Color(0.72, 0.42, 0.22) if sim.whorl > 0 else Color(0.72, 0.72, 0.74)) if s.wire > 0 \
+			else sim.bark_colors[3]
+	var rad := s.radius + wr * (1.0 - 0.7 * s.mark) if s.wire > 0 else s.radius
+	if s.wire == 0:
+		wr *= 0.5 * s.mark
+	var dn := d / l
+	var a := _perp(dn)
+	var b := dn.cross(a)
+	var ph: float = wire_phase.get(s.parent, 0.0)
+	var turns := l / (TAU * rad)  # 45° : un tour par longueur de circonférence
+	var n := maxi(3, ceili(turns * 8.0))
+	var a0 := Vector4(-1000.0, 1.0, 1.0, -1.0)
+	sides = 4
+	var prev := -1
+	var pc := Vector3.ZERO
+	for q in n + 1:
+		var ang := ph + TAU * turns * q / n
+		var c := s.start + d * (float(q) / n) + (a * cos(ang) + b * sin(ang)) * rad
+		var tg := (c - pc).normalized() if q > 0 else dn
+		var cur := _ring(c, tg, _perp(tg), wr, 0.0, col, 0.0, a0, Vector4.ZERO)
+		if prev < 0:
+			_cap(cur, c - tg * wr, false)
+		else:
+			_join(prev, cur)
+		prev = cur
+		pc = c
+	_cap(prev, pc + dn * wr, true)
+	wire_phase[i] = ph + TAU * turns
 
 
 ## Bourgeon ovale (base, ventre, pointe), couleur unie de l'espèce, contour compris.
