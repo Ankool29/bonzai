@@ -365,8 +365,8 @@ func _enter_garden() -> void:
 	in_garden = true
 	_mode()
 	_garden_info()
-	goal_target = Vector3(0, 0.6, 0)
-	goal_dist = 9.0
+	goal_target = Vector3(0, 0.3, 0)
+	goal_dist = 4.0
 	gliding = true
 
 
@@ -385,9 +385,9 @@ func _mode() -> void:
 	panel.visible = not in_garden
 	gauges.visible = not in_garden
 	sun.shadow_enabled = in_garden  # ombres seulement à l'exposition (chauffe)
-	sun.directional_shadow_max_distance = 16.0 if in_garden else 3.0
-	max_dist = 14.0 if in_garden else 2.0
-	cam.near = 0.05 if in_garden else 0.005  # précision de profondeur sur toute la cour
+	sun.directional_shadow_max_distance = 8.0 if in_garden else 3.0
+	max_dist = 7.0 if in_garden else 2.0
+	cam.near = 0.02 if in_garden else 0.005  # précision de profondeur sur toute la cour
 
 
 func _garden_info() -> void:
@@ -433,7 +433,7 @@ func _carry(pos: Vector2) -> void:
 	var d := cam.project_ray_normal(pos)
 	if d.y > -0.01:
 		return
-	exhibit.nodes[lifted].position = o + d * ((0.95 - o.y) / d.y)
+	exhibit.nodes[lifted].position = o + d * ((0.55 - o.y) / d.y)
 
 
 ## Dépose l'arbre soulevé sur l'emplacement visé ; échange si la place est prise.
