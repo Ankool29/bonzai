@@ -81,7 +81,7 @@ void vertex() {
 		young_k = 1.0 - clamp((anim_time - CUSTOM0.x) / 52.0, 0.0, 1.0);
 		dry_k = (CUSTOM0.w >= 0.0 && anim_time >= CUSTOM0.w) ? 1.0 : 0.0;
 	} else if (anim == 2) {
-		VERTEX = anim_leaf(VERTEX, CUSTOM0, CUSTOM1);
+		VERTEX = anim_leaf(VERTEX, CUSTOM0, CUSTOM1, CUSTOM2);
 		if (deciduous) {
 			autumn_k = clamp((mod(anim_time, 52.0) - 40.0) / 5.0, 0.0, 1.0);  // jaunit en octobre
 		}

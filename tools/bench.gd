@@ -34,6 +34,7 @@ func _init() -> void:
 	out += "\nTotal : %d ms\n" % (total / 1000)
 	out += _techniques()
 	out += _racines()
+	out += _pause()
 	print("=== BANC ===")
 	print(out)
 	quit()
@@ -146,4 +147,32 @@ func _racines() -> String:
 			for i in rs.size():
 				lines += "RACINE %f %f %f %f %f %f %f\n" % [rs.p0[i].x, rs.p0[i].y, rs.p0[i].z, rs.p1[i].x, rs.p1[i].y, rs.p1[i].z, rs.rad[i]]
 			print(lines)
+	return out
+
+
+## Étape 30b : coût de la copie d'état (à chaque paquet) et du retour en arrière (à la pause), sur un arbre de
+## 8 ans ; puis même arbre au bout d'un an, joué d'un coup ou avec un retour en arrière au milieu.
+func _pause() -> String:
+	var out := "\n| pause (8 ans, semaine 20) | entre-nœuds | copie (ms) | retour (ms) | identique après retour |\n|---|---|---|---|---|\n"
+	for sp in Species.ALL:
+		var sim := TreeSim.new()
+		sim.reset(3, sp)
+		for w in 52 * 7 + 20:
+			sim.step_week()
+		var t0 := Time.get_ticks_usec()
+		var snap := sim.to_data().duplicate(true)
+		var t1 := Time.get_ticks_usec()
+		var ref := TreeSim.new()
+		ref.reset(3, sp)
+		ref.from_data(snap.duplicate(true))
+		for w in 6:
+			sim.step_week()
+		var t1b := Time.get_ticks_usec()
+		sim.from_data(snap.duplicate(true))
+		var t2 := Time.get_ticks_usec()
+		for w in 26:
+			sim.step_week()
+			ref.step_week()
+		var same := sim.segs.size() == ref.segs.size() and is_equal_approx(sim.segs[0].radius, ref.segs[0].radius) and sim.root.size() == ref.root.size()
+		out += "| %s | %d | %d | %d | %s |\n" % [sp["name"], sim.segs.size(), (t1 - t0) / 1000, (t2 - t1b) / 1000, "oui" if same else "NON"]
 	return out
