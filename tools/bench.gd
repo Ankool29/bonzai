@@ -221,24 +221,23 @@ func _genevrier() -> String:
 	return out
 
 
-## Diagnostic temporaire (étape 31) : le genévrier s'arrête de pousser ; variantes pour isoler la cause.
+## Diagnostic temporaire (étape 31) : réglage du genévrier (ombre des bourgeons serrés).
 func _diag_genevrier() -> String:
-	var out := "\n| diag genévrier | an1 seg | an2 seg | an3 seg | santé an3 | racines | lumière |\n|---|---|---|---|---|---|---|\n"
-	for v in ["tel quel", "poussées orme", "non opposé", "caduc", "entre-nœud 1 cm", "fiche orme + écailles"]:
+	var out := "\n| diag genévrier | an2 seg | an4 seg | an6 seg | hauteur an6 (cm) | santé an6 | ms/an |\n|---|---|---|---|---|---|---|\n"
+	var fl := {14: 1.0, 19: 0.6, 24: 0.5, 30: 0.4}
+	for v in ["surface 0,3", "surface 0,2", "surface 0,3 + 8 mm", "surface 0,15 + 8 mm", "orme (réf.)"]:
 		var sim := TreeSim.new()
-		sim.reset(1, Species.JUNIPER if v != "fiche orme + écailles" else Species.ELM)
-		match v:
-			"poussées orme": sim.flushes = {14: 1.0, 22: 0.7, 30: 0.4}
-			"non opposé": sim.opposite = false
-			"caduc": sim.leaf_years = 0
-			"entre-nœud 1 cm": sim.internode = 0.01
-			"fiche orme + écailles": sim.leaf_shape = 3
+		sim.reset(1, Species.JUNIPER if v != "orme (réf.)" else Species.ELM)
+		if v != "orme (réf.)":
+			sim.flushes = fl
+			sim.leaf_area = 0.3 if v.begins_with("surface 0,3") else (0.2 if v == "surface 0,2" else 0.15)
+			if v.ends_with("8 mm"):
+				sim.internode = 0.008
 		var n := []
-		for y in 3:
+		var t0 := Time.get_ticks_msec()
+		for y in 6:
 			for w in 52:
 				sim.step_week()
-				if y == 0 and (sim.week % 52 in [13, 15, 20, 25, 31, 34, 36, 37]):
-					print("DIAG %s sem %d seg %d res %.3f roots %.3f light %.3f vig %.3f" % [v, sim.week, sim.segs.size(), sim.reserve, sim.roots, sim.segs[0].light, sim.last_vigor])
 			n.append(sim.segs.size())
-		out += "| %s | %d | %d | %d | %.2f | %.2f | %.2f |\n" % [v, n[0], n[1], n[2], sim.health(), sim.roots, sim.segs[0].light]
+		out += "| %s | %d | %d | %d | %d | %.2f | %d |\n" % [v, n[1], n[3], n[5], roundi(sim.height() * 100.0), sim.health(), (Time.get_ticks_msec() - t0) / 6]
 	return out
