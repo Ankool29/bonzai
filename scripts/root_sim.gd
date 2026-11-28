@@ -172,10 +172,10 @@ func pulse(roots: float) -> void:
 
 ## Cerne annuel des racines (modèle des tuyaux) : chaque pointe porte la part du houppier de son secteur,
 ## mêlée selon l'intégration de l'espèce ; contreforts près du collet (zone de rapide décroissance).
-func thicken(sector_light: PackedFloat32Array, ring: float, trunk_r: float) -> void:
+func thicken(sector_light: PackedFloat32Array, ring: float, trunk_r: float) -> float:
 	var n := p0.size()
 	if n == 0:
-		return
+		return 0.0
 	var flow := PackedFloat32Array()
 	flow.resize(n)
 	var cnt := PackedInt32Array()
@@ -196,8 +196,9 @@ func thicken(sector_light: PackedFloat32Array, ring: float, trunk_r: float) -> v
 		if par[i] >= 0:
 			flow[par[i]] += flow[i]
 	# Racines à nu (étape 29a) : une racine épaisse continue de grossir et devient du tronc tant que ses pointes
-	# sont dans la terre ; une racine fine (moins de 2 mm) ne grossit plus ; une racine sans aucune pointe dans
-	# la terre sèche (Bonsai Bark, Bonsai Nut).
+	# sont dans la terre ; une racine fine (moins de 2 mm) à l'air se dessèche avec tout ce qu'elle porte ; une
+	# racine sans aucune pointe dans la terre sèche (Bonsai Bark, Bonsai Nut, Fire Escape Bonsai). D'où l'intérêt
+	# de dégager peu à peu, une fois les racines épaissies.
 	var wet := PackedByteArray()
 	wet.resize(n)
 	for i in range(n - 1, -1, -1):
@@ -207,15 +208,14 @@ func thicken(sector_light: PackedFloat32Array, ring: float, trunk_r: float) -> v
 			wet[par[i]] = 1
 	var dead := {}
 	for i in n:
-		if not wet[i]:
+		if not wet[i] or (par[i] >= 0 and dead.has(par[i])) or (not in_soil(p1[i]) and rad[i] < 0.001):
 			dead[i] = true
-			continue
-		if not in_soil(p1[i]) and rad[i] < 0.001:
 			continue
 		var zrt := 1.0 + 2.0 * maxf(0.0, 1.0 - Vector2(p0[i].x, p0[i].z).length() / (4.0 * trunk_r))
 		rad[i] = sqrt(rad[i] * rad[i] + ring * flow[i] * zrt / PI)
 	if not dead.is_empty():
 		_remove(dead)
+	return float(dead.size()) / n  # part des racines perdues (racines à nu desséchées)
 
 
 func sector(p: Vector3) -> int:
