@@ -1,6 +1,6 @@
 # Étape 31 : genévrier de Chine, Shimpaku (Juniperus chinensis var. sargentii)
 
-En attente de validation par le joueur.
+Validé par le joueur le 28/11/2026. Fait.
 
 ## Botanique (sources)
 - Deux sortes de feuilles. Adulte : écailles de 1 à 3 mm, opposées par paires croisées (4 rangs), plaquées sur le
@@ -23,8 +23,9 @@ En attente de validation par le joueur.
   NC State Extension).
 
 ## 31a : l'espèce
-- Fiche `Species.JUNIPER` : bourgeons opposés (paires croisées), entre-nœuds courts (6 mm), pousse lente mais
-  continue : poussées aux semaines 14, 19, 24, 30 et 36 ; feuillage vivant 4 ans (`leaf_years` 4) ; bourgeons
+- Fiche `Species.JUNIPER` : bourgeons opposés (paires croisées), entre-nœuds courts (8 mm), pousse lente mais
+  continue : poussées aux semaines 14, 19, 24 et 30 (une poussée après le bilan de fin d'été, semaine 35, vidait
+  les réserves) ; ombre progressive (en tout-ou-rien, les coussins serrés s'étouffaient selon la graine) ; feuillage vivant 4 ans (`leaf_years` 4) ; bourgeons
   latents qui meurent avec le feuillage (`bud_life` 4 ans) ; peu de rejets.
 - Feuillage d'écailles (`leaf_shape` 3) : chaque entre-nœud feuillé porte de petits cordons verts par paires
   croisées, au dessin d'écailles. Vert vif au printemps, plus sombre en vieillissant. Le vieux bois sans feuillage
@@ -46,3 +47,11 @@ En attente de validation par le joueur.
 
 ## Hors de cette étape
 - Jin et shari (bois mort sculpté), greffe.
+
+## Résultats (banc)
+- Sans taille, pot de 8 L, à 4 ans en été : 1087 entre-nœuds, 20 cm, santé 0,99 ; environ 30 cm à 6 ans.
+- Forte taille au printemps (45 % du feuillage) : les 22 pousses de l'année sont juvéniles. Pincement : 132 pousses
+  juvéniles sur 226. Sans taille : aucune.
+- Robustesse : 4 graines, de 2100 à 4000 entre-nœuds et 25 à 29 cm à 6 ans, santé 1.
+- 8 ans : 4900 entre-nœuds, 0,23 s de simulation par an et 0,7 s de dessin sur le serveur du banc.
+- Dessin de vérification : `docs/genevrier_verif.png`.

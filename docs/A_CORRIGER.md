@@ -22,3 +22,4 @@
 - Étape 29b : la pierre ne se retire pas ; un rempotage dans un pot plus petit garde le pot abaissé à la même hauteur (des racines du fond peuvent être coupées). Pas de rendu de mousse ni d'érosion de la terre de la butte.
 - Corrigé (étape 30a) : les feuilles apparaissaient au bout de la pousse avant la tige.
 - Étape 30b : la simulation avance par semaines ; en pause au milieu d'une semaine, une coupe s'applique à l'arbre de fin de semaine (les pousses à venir de la semaine existent déjà). Le retour en arrière à la pause bloque l'écran ~0,15 s sur un très gros arbre.
+- Étape 31 (genévrier) : réglages trouvés au banc (pas encore essayés dans le jeu). Le feuillage juvénile ne change que le dessin (pas encore la valeur de l'arbre). Pas de jin ni de shari. L'intérieur à l'ombre sèche beaucoup sur un arbre jamais taillé.
