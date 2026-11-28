@@ -928,7 +928,11 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 	var n := 1 if spur else clampi(int(v + rng.randf()), 1, max_per_flush)
 	if preformed > 0:
 		n = clampi(int(preformed + (0.0 if spur else v) + rng.randf()), 1, max_per_flush)
-	var len_v := spur_len if spur else clampf(0.6 + 0.15 * v, 0.7, 1.5)
+	# Entre-nœuds selon la vigueur de la pousse : de quelques millimètres sur une pousse faible à plusieurs
+	# centimètres sur une pousse vigoureuse. Plus l'arbre a de pointes (pincement, ramification), plus la vigueur
+	# se partage et plus les entre-nœuds raccourcissent (Bonsai Tonight). Avant : plancher à 0,7, presque atteint
+	# par toutes les pousses d'un bonsaï : le pincement ne pouvait rien raccourcir.
+	var len_v := spur_len if spur else clampf(0.3 + 0.25 * v, 0.4, 1.6)
 	# Étape 28 : à l'ombre, la pousse s'étire et ses feuilles grandissent (étiolement) ; au soleil, c'est
 	# l'inverse. Poussées d'été plus courtes, aux feuilles plus petites ; après un effeuillage, plus encore.
 	var lum := _light(segs[parent_i].end) if shadow.size() == GX * GY * GZ else 0.6
