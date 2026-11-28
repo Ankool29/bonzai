@@ -41,6 +41,7 @@ class Seg:
 	var mark := 0.0          # marque laissée par un fil qui a mordu (0 à 1), s'efface avec les cernes
 	var crack := false       # fêlée en pliant : une chance sur deux de dépérir à la fin de l'été
 	var defol := -1.0        # semaine de l'effeuillage (étape 28), -1 : jamais
+	var kick := false        # bourgeon réveillé par un pincement ou un effeuillage : part à la poussée provoquée
 	# recalculés à chaque poussée
 	var light := 0.0
 	var count := 0
@@ -268,6 +269,8 @@ func step_week() -> void:
 		_flush(0.6)
 		extra_defol = false
 		extra_local = false
+		for s in segs:
+			s.kick = false  # le réveil ne vaut que pour cette poussée
 	if w == DIEBACK_WEEK:
 		_dieback()
 	if w == 0:
@@ -468,10 +471,13 @@ func pinch(i: int) -> String:
 	var j := s.parent
 	prune(i)
 	_spend(-0.4 * lost)  # la coupe ordinaire coûte 0,5 ; la pousse tendre seulement 0,1
+	# Les 2 nœuds restants partent tout de suite, sans garder de bonus de vigueur pour les poussées suivantes :
+	# sinon ils captaient la vigueur de l'été et refaisaient de longues pousses (le pincement ne raccourcissait rien).
 	for k in 2:
 		if j < 0:
 			break
-		segs[j].release = release_boost
+		segs[j].release = 1.0
+		segs[j].kick = true
 		j = segs[j].parent
 	var wk := week % 52
 	if wk >= 12 and wk <= 30 and (extra_flush <= week):
@@ -505,7 +511,7 @@ func defoliate(only := PackedInt32Array()) -> String:
 		if s.dry or (not only.is_empty() and s.main_child < 0):
 			continue
 		s.defol = week
-		s.release = release_boost  # les bourgeons à l'aisselle des feuilles retirées partiront
+		s.kick = true  # les bourgeons à l'aisselle des feuilles retirées partiront au mini-printemps
 		lost += s.q_term + s.q_lat
 		n += 1
 		if s.weak > 0 and rng.randf() < 0.5:  # une branche déjà faible ne le supporte pas
@@ -516,7 +522,7 @@ func defoliate(only := PackedInt32Array()) -> String:
 				segs[k].dry_week = week
 	if n == 0:
 		return "Rien à effeuiller ici."
-	_spend(0.7 * lost)  # semaines sans photosynthèse et nouvelles feuilles à fabriquer
+	_spend(0.7 * minf(lost, roots))  # semaines sans photosynthèse et nouvelles feuilles, à l'échelle de ce que les racines fournissent
 	extra_flush = week + DEFOL_REGROW - 1 + rng.randi() % 2
 	extra_defol = true
 	extra_local = true
@@ -889,7 +895,7 @@ func _grow() -> void:
 		# Pin, poussée d'été : seuls les bourgeons très vigoureux (ou nés d'une coupe de chandelle) partent.
 		var summer := whorl > 0 and flush_now < 1.0 and not s.forced
 		if extra_local:  # poussée provoquée : seuls les bourgeons libérés (pincés, effeuillés) partent, presque tous
-			if s.release <= 1.0:
+			if not s.kick:
 				s.v_term = 0.0
 				s.v_lat = 0.0
 				continue
@@ -922,7 +928,11 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 	var n := 1 if spur else clampi(int(v + rng.randf()), 1, max_per_flush)
 	if preformed > 0:
 		n = clampi(int(preformed + (0.0 if spur else v) + rng.randf()), 1, max_per_flush)
-	var len_v := spur_len if spur else clampf(0.6 + 0.15 * v, 0.7, 1.5)
+	# Entre-nœuds selon la vigueur de la pousse : de quelques millimètres sur une pousse faible à plusieurs
+	# centimètres sur une pousse vigoureuse. Plus l'arbre a de pointes (pincement, ramification), plus la vigueur
+	# se partage et plus les entre-nœuds raccourcissent (Bonsai Tonight). Avant : plancher à 0,7, presque atteint
+	# par toutes les pousses d'un bonsaï : le pincement ne pouvait rien raccourcir.
+	var len_v := spur_len if spur else clampf(0.3 + 0.25 * v, 0.4, 1.6)
 	# Étape 28 : à l'ombre, la pousse s'étire et ses feuilles grandissent (étiolement) ; au soleil, c'est
 	# l'inverse. Poussées d'été plus courtes, aux feuilles plus petites ; après un effeuillage, plus encore.
 	var lum := _light(segs[parent_i].end) if shadow.size() == GX * GY * GZ else 0.6
@@ -944,7 +954,8 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 		s.start = p
 		s.leaf_k = float(k + 1) / n
 		s.size_k = clampf(0.6 + 0.25 * v, 0.6, 1.3) * leaf_f  # pousse faible, soleil, été : petites feuilles
-		var profile := 1.0 if spur else 0.85 + 0.35 * sin(PI * (k + 0.5) / n)
+		# entre-nœuds courts à la base de la pousse, longs au milieu, courts au bout : pincer tôt garde les courts
+		var profile := 1.0 if spur else 0.45 + 0.75 * sin(PI * (k + 0.5) / n)
 		if opposite and not spur:
 			profile = 0.35 if k == 0 else 0.8 + 0.5 * float(k) / n  # première paire serrée, puis de plus en plus long
 		s.end = p + d * internode * len_v * profile * rng.randf_range(0.8, 1.2)
