@@ -19,11 +19,14 @@ vec3 anim_wood(vec3 v, vec4 c0, vec4 c1, vec4 c2, out float shown) {
 	return cc + (v - c1.xyz) * mix(c0.z, 1.0, k) * g;  // et le bois épaissit
 }
 
-// Feuilles et aiguilles. c0 = (naissance, durée de croissance, chute), c1 = (point d'attache).
-vec3 anim_leaf(vec3 v, vec4 c0, vec4 c1) {
-	float f = clamp((anim_time - c0.x) / max(c0.y, 0.001), 0.0, 1.0);
+// Feuilles et aiguilles. c0 = (naissance, durée de croissance, chute), c1 = (point d'attache final),
+// c2 = (départ de l'entre-nœud, durée de son allongement ; 0 = attache immobile).
+// La feuille sort petite (15 %) et suit la pointe de la tige qui s'allonge, puis finit de grandir (étape 30a).
+vec3 anim_leaf(vec3 v, vec4 c0, vec4 c1, vec4 c2) {
+	float f = mix(0.15, 1.0, clamp((anim_time - c0.x) / max(c0.y, 0.001), 0.0, 1.0));
 	if (anim_time < c0.x || anim_time > c0.z) {
 		f = 0.0;
 	}
-	return c1.xyz + (v - c1.xyz) * f;
+	float g = c2.w > 0.0 ? clamp((anim_time - c0.x) / c2.w, 0.0, 1.0) : 1.0;
+	return mix(c2.xyz, c1.xyz, g) + (v - c1.xyz) * f;
 }

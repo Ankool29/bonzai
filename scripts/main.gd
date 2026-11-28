@@ -60,8 +60,23 @@ var last_touch := 0   # ms du dernier toucher (cadence d'affichage)
 var anim_t0 := 0.0    # période animée (semaines)
 var anim_t1 := 0.0
 var anim_now := 0.0
-var anim_dur := 1.0   # durée de l'animation (s)
-var playing := false
+# Temps continu (étape 30b) : l'arbre pousse en continu ; le paquet de semaines suivant est calculé pendant que
+# le paquet en cours est joué. sim est toujours à la fin du dernier paquet calculé.
+const SPEEDS := [1, 2, 5, 10]  # jours par seconde
+const WINTER_SPEED := 50       # l'hiver (rien ne pousse) défile tout seul plus vite
+var speed_i := 0
+var running := false   # lecture
+var pausing := false   # mise en pause en cours (la simulation revient à la semaine affichée)
+var next_ready := false  # paquet suivant calculé (sim est à next_t1)
+var next_t0 := 0.0
+var next_t1 := 0.0
+var snap_cur := {}     # état de sim au début du paquet affiché
+var snap_next := {}    # état de sim au début du paquet suivant
+var task_kind := 0     # 0 : paquet suivant, 1 : retour à la semaine de la pause
+var last_save := 0.0
+var info_line := ""    # 2e ligne des infos, recalculée seulement quand aucun calcul ne touche sim
+var play_btn: Button
+var speed_btn: Button
 var loader: Polygon2D
 
 var touches := {}
@@ -203,6 +218,11 @@ func _open(i: int) -> void:
 	lm.set_shader_parameter("leaf_shape", sim.leaf_shape)
 	_clear_cut()
 	layout = sim.layout
+	anim_t0 = sim.week
+	anim_t1 = sim.week
+	anim_now = sim.week
+	snap_cur = {}
+	last_save = sim.week
 	for b in pine_btns:
 		b.visible = sim.whorl > 0
 	_size_pot()
@@ -329,9 +349,8 @@ func _build_ui() -> void:
 		page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(page)
 		pages.append(page)
-	_button(pages[0], "+1 semaine", func(): _advance(1), "semaine")
-	_button(pages[0], "+1 saison", func(): _advance(13), "saison")
-	_button(pages[0], "+1 an", func(): _advance(52), "an")
+	play_btn = _button(pages[0], "Lecture", _toggle_play, "lecture")
+	speed_btn = _button(pages[0], "×1", _next_speed)
 	for k in 3:
 		var b := _button(pages[1], ["Doigts", "Ciseaux", "Concave"][k], _set_tool.bind(k), ["doigts", "ciseaux", "concave"][k])
 		b.toggle_mode = true
@@ -678,23 +697,42 @@ func _button(parent: Control, text: String, cb: Callable, icon := "") -> Button:
 	return b
 
 
-## Avance le temps : la période est simulée et maillée dans un fil de calcul (petit chargement), puis
-## jouée en animation fluide : ~1 s pour une semaine, ~3 s pour une saison, ~6 s pour un an.
-func _advance(weeks: int) -> void:
-	if _busy():
-		return
-	_clear_cut()
-	sim.begin_period()
-	anim_t0 = sim.week
-	anim_t1 = sim.week + weeks
-	anim_dur = clampf(0.8 + weeks * 0.1, 1.0, 6.0)
+## Lecture / pause (étape 30b).
+func _toggle_play() -> void:
+	if running:
+		_pause()
+	elif not pausing and task < 0:
+		_clear_cut()
+		running = true
+		play_btn.icon = load("res://ui/icons/pause.png")
+		play_btn.tooltip_text = "Pause"
+
+
+func _next_speed() -> void:
+	speed_i = (speed_i + 1) % SPEEDS.size()
+	speed_btn.text = "×%d" % SPEEDS[speed_i]
+
+
+## Semaines jouées par seconde à l'instant t.
+func _rate(t: float) -> float:
+	var w := fposmod(t, 52.0)
+	return (WINTER_SPEED if w >= 48.0 or w < 12.0 else SPEEDS[speed_i]) / 7.0
+
+
+## Calcule le paquet suivant dans un fil de calcul : assez de semaines pour que le calcul finisse avant
+## la fin du paquet joué (d'après la durée du dernier calcul).
+func _launch() -> void:
+	var n := clampi(ceili(calc_ms / 1000.0 * _rate(anim_t1) * 1.5), 1, 26)
+	var t_start := float(sim.week)
+	next_t0 = t_start
+	next_t1 = t_start + n
 	var leaves := show_leaves
-	var t_start := anim_t0
 	var start_ms := Time.get_ticks_msec()
-	loader.visible = true
-	_set_buttons(false)
+	task_kind = 0
 	task = WorkerThreadPool.add_task(func():
-		for i in weeks:  # chaque arbre a sa propre date : seul l'arbre ouvert pousse
+		sim.begin_period()
+		snap_next = sim.to_data().duplicate(true)
+		for i in n:  # chaque arbre a sa propre date : seul l'arbre ouvert pousse
 			sim.step_week()
 		sim_ms = Time.get_ticks_msec() - start_ms
 		built = TreeMesh.build(sim, PackedInt32Array(), t_start, sim.week, leaves)
@@ -702,9 +740,62 @@ func _advance(weeks: int) -> void:
 		vert_k = TreeMesh.vertex_count(built) / 1000)
 
 
+## Le paquet calculé devient le paquet joué ; sauvegarde tous les trois mois de jeu.
+func _swap() -> void:
+	next_ready = false
+	snap_cur = snap_next
+	anim_t0 = next_t0
+	anim_t1 = next_t1
+	_show(built)
+	if anim_t0 - last_save >= 13.0:
+		last_save = anim_t0
+		garden.save_tree(garden.current)
+
+
+## Pause au jour près : l'arbre reste affiché à ce jour ; sim revient à la fin de la semaine affichée.
+func _pause() -> void:
+	running = false
+	pausing = true
+	play_btn.icon = load("res://ui/icons/lecture.png")
+	play_btn.tooltip_text = "Lecture"
+	_set_buttons(false)
+	if task < 0:
+		_finish_pause()
+
+
+func _finish_pause() -> void:
+	if next_ready:  # sim avait pris un paquet d'avance
+		next_ready = false
+		sim.from_data(snap_next.duplicate(true))
+	var target := clampf(ceilf(anim_now), anim_t0, anim_t1)
+	if target >= anim_t1 or snap_cur.is_empty():
+		_end_pause()
+		return
+	sim.from_data(snap_cur.duplicate(true))  # début du paquet affiché, puis on rejoue jusqu'à la semaine voulue
+	var t_start := anim_t0
+	var leaves := show_leaves
+	task_kind = 1
+	task = WorkerThreadPool.add_task(func():
+		while sim.week < target:
+			sim.step_week()
+		built = TreeMesh.build(sim, PackedInt32Array(), t_start, sim.week, leaves))
+
+
+func _end_pause() -> void:
+	pausing = false
+	anim_t1 = sim.week
+	anim_now = minf(anim_now, anim_t1)
+	layout = sim.layout
+	garden.save_tree(garden.current)
+	last_save = anim_t0
+	_set_time(anim_now)
+	_set_buttons(true)
+	_info(anim_now)
+
+
 func _process(delta: float) -> void:
 	# 30 images/s au repos, 60 quand on touche l'écran ou que l'arbre bouge (l'écran du téléphone va jusqu'à 120)
-	var active := playing or gliding or task >= 0 or Time.get_ticks_msec() - last_touch < 2000
+	var active := running or gliding or task >= 0 or Time.get_ticks_msec() - last_touch < 2000
 	Engine.max_fps = 60 if active else 30
 	if msg.visible and Time.get_ticks_msec() > msg_until:
 		msg.visible = false
@@ -729,34 +820,35 @@ func _process(delta: float) -> void:
 			_carry(tap_start)
 	if task >= 0:
 		loader.rotation += delta * 4.0
-		if not WorkerThreadPool.is_task_completed(task):
-			return
-		WorkerThreadPool.wait_for_task_completion(task)
-		task = -1
-		loader.visible = false
-		layout = sim.layout
-		garden.save_tree(garden.current)
-		_show(built)
-		anim_now = anim_t0
-		playing = true
-	if playing:
-		anim_now = minf(anim_now + (anim_t1 - anim_t0) * delta / anim_dur, anim_t1)
-		_set_time(anim_now)
-		_info(anim_now)
-		if anim_now >= anim_t1:
-			_stop_anim()
+		loader.visible = pausing or anim_now >= anim_t1  # l'animation attend le calcul
+		if WorkerThreadPool.is_task_completed(task):
+			WorkerThreadPool.wait_for_task_completion(task)
+			task = -1
+			loader.visible = false
+			if task_kind == 1:
+				_show(built)
+				_end_pause()
+			else:
+				next_ready = true
+				layout = sim.layout
+				if pausing:
+					_finish_pause()
+	if running:
+		if anim_now < anim_t1:
+			anim_now = minf(anim_now + delta * _rate(anim_now), anim_t1)
+			_set_time(anim_now)
+			_info(anim_now)
+		if anim_now >= anim_t1 and next_ready:
+			_swap()
+		if task < 0 and not next_ready:
+			_launch()
 
 
+## Une action pendant la lecture met en pause (on la refait une fois l'arbre arrêté).
 func _busy() -> bool:
-	return task >= 0 or playing
-
-
-## Fin de l'animation : le maillage de la période montre déjà l'arbre final, rien à recalculer.
-func _stop_anim() -> void:
-	playing = false
-	_set_time(anim_t1)
-	_info(anim_t1)
-	_set_buttons(true)
+	if running:
+		_pause()
+	return pausing or task >= 0
 
 
 func _set_buttons(on: bool) -> void:
@@ -870,12 +962,10 @@ func _toggle_leaves() -> void:
 	_refresh()
 
 
-## Arbre immobile à la date actuelle (après une coupe, une sélection, un changement d'affichage).
+## Arbre immobile au jour affiché (après une coupe, une sélection, un changement d'affichage).
 func _refresh() -> void:
-	anim_t0 = sim.week
-	anim_t1 = sim.week
-	_show(TreeMesh.build(sim, PackedInt32Array(), sim.week, sim.week, show_leaves))
-	_set_time(sim.week)
+	_show(TreeMesh.build(sim, PackedInt32Array(), anim_t0, anim_t1, show_leaves))
+	_set_time(anim_now)
 	_highlight()
 
 
@@ -888,13 +978,15 @@ func _highlight() -> void:
 		hl_wood.mesh = m[0]
 		hl_leaf.mesh = m[1]
 	_update_act()
-	_info(sim.week)
+	_info(anim_now)
 	_draw_overlay()
 	_update_cam()
 
 
 ## Vue d'ensemble de l'arbre.
 func _recenter() -> void:
+	if _busy():
+		return
 	goal_target = Vector3(0, maxf(0.05, sim.height() * 0.45), 0)
 	goal_dist = maxf(0.35, sim.height() * 1.6)
 	gliding = true
@@ -910,6 +1002,11 @@ func _info(time: float) -> void:
 		season = "été"
 	elif w >= 37 and w < 50:
 		season = "automne"
+	var day := mini(floori(fposmod(time, 1.0) * 7.0) + 1, 7)
+	var date := "%s · an %d · sem. %d · jour %d · %s" % [garden.names[garden.current], wk / 52 + 1, w + 1, day, season]
+	if task >= 0:  # le fil de calcul modifie sim : on garde les mesures du dernier arrêt
+		info.text = date + info_line
+		return
 	# mesure (audit, phase 1) : simulation + dessin, entre-nœuds, sommets dessinés
 	var extra := "sim %d + dessin %d ms · %d seg · %d k sommets" % [sim_ms, calc_ms - sim_ms, sim.segs.size(), vert_k] if calc_ms > 0 else "%d segments" % sim.segs.size()
 	var v := sim.last_vigor
@@ -924,9 +1021,9 @@ func _info(time: float) -> void:
 		state = "\nl'arbre est mort"
 	elif sim.segs[0].count > 0.85 * sim.capacity:
 		state = "\nlimite de rameaux du jeu atteinte : éclaircir pour relancer"
-	info.text = "%s · an %d · sem. %d · %s\n%d cm · Ø %d mm · pot %d L · %s%s" % [
-		garden.names[garden.current], wk / 52 + 1, w + 1, season, roundi(sim.height() * 100.0),
+	info_line = "\n%d cm · Ø %d mm · pot %d L · %s%s" % [roundi(sim.height() * 100.0),
 		roundi(sim.segs[0].radius * 2000.0), roundi(sim.pot_volume), extra, state]
+	info.text = date + info_line
 
 
 func _update_cam() -> void:
@@ -1072,6 +1169,8 @@ func _pinch_len() -> float:
 
 ## Double-tap : la caméra glisse vers le point de branche sous le doigt et s'en rapproche.
 func _focus_at(pos: Vector2) -> void:
+	if task >= 0 or pausing:  # le fil de calcul modifie sim
+		return
 	var i := _pick(pos)
 	if i < 0:
 		return
@@ -1087,10 +1186,10 @@ func _focus_at(pos: Vector2) -> void:
 
 ## Sélectionne le segment le plus proche du doigt à l'écran.
 func _select_at(pos: Vector2) -> void:
-	if playing:  # toucher l'écran pendant l'animation : on saute à la fin
-		_stop_anim()
+	if running:  # toucher l'arbre pendant la lecture : pause
+		_pause()
 		return
-	if task >= 0:
+	if task >= 0 or pausing:
 		return
 	if root_mode:
 		TreeMesh.root_sel = _pick_root(pos)

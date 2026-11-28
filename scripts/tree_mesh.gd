@@ -25,6 +25,7 @@ var wc1 := PackedFloat32Array()
 var wc2 := PackedFloat32Array()
 var lc0 := PackedFloat32Array()  # CUSTOM0-1 des feuilles
 var lc1 := PackedFloat32Array()
+var lc2 := PackedFloat32Array()
 var nc0 := PackedFloat32Array()  # CUSTOM0-1 des aiguilles
 var nc1 := PackedFloat32Array()
 var verts := PackedVector3Array()
@@ -42,6 +43,7 @@ var lcols := PackedColorArray()
 var wire_phase := {}  # angle de la spirale du fil au bout de chaque entre-nœud (continuité d'un entre-nœud à l'autre)
 var la0 := PackedFloat32Array([0, 0, 0, 0])  # dates de la feuille en cours (CUSTOM0)
 var la1 := PackedFloat32Array([0, 0, 0, 0])  # point d'attache de la feuille en cours (CUSTOM1)
+var la2 := PackedFloat32Array([0, 0, 0, 0])  # départ et allongement de son entre-nœud (CUSTOM2, étape 30a)
 var luv := PackedVector2Array()   # feuilles : UV.x = 0 au centre du limbe, 1 au bord (contour tracé par le shader)
 var luv2 := PackedVector2Array()  # feuilles : position dans le plan de la feuille (nervures tracées par le shader)
 var lb0 := Vector3.ZERO           # repère de la feuille en cours : base du limbe, axe, côté, longueur
@@ -612,8 +614,10 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 
 		col *= Color(1.0, 0.9, 0.55)  # arbre épuisé : feuillage jaunissant
 	if selected:
 		col = Color(1.0, 0.35, 0.3)
-	la0 = PackedFloat32Array([b, s.grow_time if born < 0.0 else 2.0, fall, 0.0])
+	# la feuille grandit ~3 semaines de plus que sa tige ; elle suit la pointe pendant que l'entre-nœud s'allonge
+	la0 = PackedFloat32Array([b, s.grow_time + 3.0 if born < 0.0 else 2.0, fall, 0.0])
 	la1 = PackedFloat32Array([s.end.x, s.end.y, s.end.z, 0.0])
+	la2 = PackedFloat32Array([s.start.x, s.start.y, s.start.z, s.grow_time if b == s.born else 0.0])
 	# Feuille d'orme : pétiole de 3 mm au nœud qui se prolonge en nervure centrale (liseré sombre),
 	# limbe ovale le plus large sous le milieu, pointe aiguë, base oblique, bord finement denté, contour fin,
 	# 5 paires de nervures. Limbe presque horizontal dans le prolongement du bourgeon (alternes, deux rangs).
@@ -741,6 +745,7 @@ func _lv(p: Vector3, nrm: Vector3, col: Color, e: float) -> void:
 	lcols.append(col)
 	lc0.append_array(la0)
 	lc1.append_array(la1)
+	lc2.append_array(la2)
 	luv.append(Vector2(e, 0.0))
 	var d := p - lb0
 	luv2.append(Vector2(d.dot(ldir), d.dot(lside)) / ll)
@@ -774,7 +779,7 @@ func _needles(s: TreeSim.Seg, h: float, weak: bool, selected: bool, gone: float)
 					nverts.append(q)
 					ncols.append(col)
 					# l'aiguille pousse quand la pousse atteint son niveau, depuis sa base
-					nc0.append_array([s.born + s.grow_time * (k + 0.5) / pairs, s.grow_time, gone, 0.0])
+					nc0.append_array([s.born + s.grow_time * (k + 0.5) / pairs, s.grow_time + 3.0, gone, 0.0])  # s'allonge après la chandelle
 					nc1.append_array([p.x, p.y, p.z, 0.0])
 
 
@@ -806,7 +811,7 @@ func _leaf_mesh() -> ArrayMesh:
 	arr[Mesh.ARRAY_COLOR] = lcols
 	arr[Mesh.ARRAY_TEX_UV] = luv
 	arr[Mesh.ARRAY_TEX_UV2] = luv2
-	var flags := _custom(arr, [lc0, lc1])
+	var flags := _custom(arr, [lc0, lc1, lc2])
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, flags)
 	return mesh
 
