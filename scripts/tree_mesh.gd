@@ -227,8 +227,9 @@ func _axis(i0: int, seg_f: PackedFloat32Array, seg_col: PackedColorArray) -> voi
 			rad.append(r[m])
 			col.append(seg_col[chain[clampi(m - off, 0, chain.size() - 1)]])
 			pidx.append(m)
-	# Lissage de Chaikin (coupe les angles sans jamais dépasser, contrairement à une spline)
-	for it in 3:
+	# Lissage de Chaikin (coupe les angles sans jamais dépasser, contrairement à une spline). Chaque passe double
+	# les anneaux : 3 passes sur les axes épais, 1 sur les rameaux fins (audit : ×8 anneaux partout avant).
+	for it in (3 if sides == SIDES else 1):
 		if pts.size() < 3:
 			break
 		var np: Array[Vector3] = [pts[0]]
@@ -298,7 +299,7 @@ func _flutes(lat: Array, c: Vector3, p: float, d: Vector3, r: float) -> Array:
 
 ## Bourgeons vivants du bois de moins de 3 ans : latéral à l'aisselle (plaqué contre le rameau), terminal au bout.
 func _buds(s: TreeSim.Seg) -> void:
-	sides = 6
+	sides = 4  # bourgeon de 1 à 2 mm : 4 faces suffisent
 	var axis := (s.end - s.start).normalized()
 	var born := s.born + s.grow_time
 	var small := 0.7 if sim.whorl > 0 else 1.0  # pin : bourgeons de la couronne plus petits que le terminal
