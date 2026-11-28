@@ -223,7 +223,7 @@ const JUNIPER := {
 	"max_per_flush": 4,
 	"preformed": 2,
 	"spur_len": 0.6,
-	"leaf_area": 0.3,       # écailles minuscules : peu d'ombre par bourgeon (à 0,7 l'arbre s'étouffait, banc)
+	"leaf_area": 0.5,
 	"sympodial": false,
 	"branch_angle": deg_to_rad(45.0),
 	"phyllotaxy": deg_to_rad(90.0),  # paires croisées
@@ -249,7 +249,7 @@ const JUNIPER := {
 	"fork": false,
 	"bud_color": Color(0.36, 0.5, 0.24),
 	"bud_size": 0.0006,
-	"light_exp": false,
+	"light_exp": true,      # ombre progressive : en tout-ou-rien, les coussins serrés s'étouffaient (banc, étape 31)
 	"whorl": 0,
 	"leaf_years": 4,
 	"heal": 0.6,

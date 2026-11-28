@@ -36,7 +36,6 @@ func _init() -> void:
 	out += _racines()
 	out += _pause()
 	out += _genevrier()
-	out += _diag_genevrier()
 	print("=== BANC ===")
 	print(out)
 	quit()
@@ -221,24 +220,3 @@ func _genevrier() -> String:
 	return out
 
 
-
-## Diagnostic temporaire (étape 31) : robustesse du genévrier selon la graine.
-func _diag_genevrier() -> String:
-	var out := "\n| diag genévrier | graine | an2 seg | an4 seg | an6 seg | hauteur an6 (cm) | santé an6 |\n|---|---|---|---|---|---|---|\n"
-	for v in ["tel quel", "lumière exp", "lumière exp + surface 0,5", "surface 0,2"]:
-		for seed in [1, 2, 3, 4]:
-			var sim := TreeSim.new()
-			sim.reset(seed, Species.JUNIPER)
-			if v.begins_with("lumière exp"):
-				sim.light_exp = true
-			if v.ends_with("0,5"):
-				sim.leaf_area = 0.5
-			if v == "surface 0,2":
-				sim.leaf_area = 0.2
-			var n := []
-			for y in 6:
-				for w in 52:
-					sim.step_week()
-				n.append(sim.segs.size())
-			out += "| %s | %d | %d | %d | %d | %d | %.2f |\n" % [v, seed, n[1], n[3], n[5], roundi(sim.height() * 100.0), sim.health()]
-	return out
