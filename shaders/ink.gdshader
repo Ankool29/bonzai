@@ -10,6 +10,7 @@ uniform sampler2D depth_tex : hint_depth_texture, filter_nearest;
 uniform vec3 paper : source_color = vec3(0.97, 0.955, 0.93);
 uniform vec3 ink : source_color = vec3(0.08, 0.075, 0.075);
 uniform vec3 sun_color : source_color = vec3(0.8, 0.14, 0.13);
+uniform float sun = 1.0;  // soleil au jardin seulement
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
@@ -41,7 +42,7 @@ void fragment() {
 		vec2 q = (uv - vec2(0.68, 0.2)) * vec2(VIEWPORT_SIZE.x / VIEWPORT_SIZE.y, 1.0);
 		float s = 1.0 - smoothstep(0.16, 0.175, length(q));
 		s *= 0.9 - 0.55 * clamp((uv.y - 0.03) / 0.35, 0.0, 1.0);  // plus pâle vers le bas, comme un lavis
-		col = mix(paper, sun_color, s);
+		col = mix(paper, sun_color, s * sun);
 	}
 	col *= 1.0 + (hash(floor(uv * VIEWPORT_SIZE)) - 0.5) * 0.036;  // grain du papier
 	ALBEDO = col;

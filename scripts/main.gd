@@ -498,6 +498,7 @@ func _mode() -> void:
 	sun.directional_shadow_max_distance = 8.0 if in_garden else 3.0
 	max_dist = 7.0 if in_garden else 2.0
 	cam.near = 0.02 if in_garden else 0.005  # précision de profondeur sur toute la cour
+	ink_mi.material_override.set_shader_parameter("sun", 1.0 if in_garden else 0.0)  # style encre : soleil au jardin seulement
 
 
 func _garden_info() -> void:
