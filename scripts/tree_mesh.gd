@@ -17,6 +17,7 @@ const OLD := Color(1, 1, 1, 0)               # écorce seule (rameau de l'année
 const NEVER := 1.0e9                         # date de disparition : jamais
 
 var sim: TreeSim
+var only := false  # surbrillance : seulement les entre-nœuds choisis (audit, phase 3)
 var t := 0.0   # fin de période : état du maillage
 var t0 := 0.0  # début de période
 var wc0 := PackedFloat32Array()  # CUSTOM0-2 du bois (4 flottants par sommet)
@@ -56,6 +57,16 @@ static func build(s: TreeSim, highlight: PackedInt32Array, t_start: float, t_end
 	m.sim = s
 	m.t0 = t_start
 	m.t = t_end
+	return m._build(highlight, leaves)
+
+
+## Surbrillance d'une sélection : seulement les entre-nœuds donnés, sans reconstruire tout l'arbre.
+static func build_only(s: TreeSim, highlight: PackedInt32Array, leaves: bool) -> Array:
+	var m := TreeMesh.new()
+	m.sim = s
+	m.t0 = s.week
+	m.t = s.week
+	m.only = true
 	return m._build(highlight, leaves)
 
 
@@ -122,6 +133,10 @@ func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 		elif weak[i] == 1 and not s.dry:
 			col = WEAK
 		seg_col[i] = col
+	if only:
+		for i in n:
+			if not marked.has(i):
+				seg_f[i] = 0.0
 	# Hiérarchie des axes : à chaque nœud, l'enfant le plus gros continue l'axe (quel que soit son bourgeon),
 	# les autres ouvrent un axe d'ordre suivant. Après une coupe, la branche qui reprend prolonge l'axe.
 	var year_now := floorf(t / 52.0)
@@ -136,7 +151,7 @@ func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 		var s := sim.segs[i]
 		if seg_f[i] <= 0.0:
 			continue
-		if s.parent < 0 or cont[s.parent] != i:
+		if s.parent < 0 or cont[s.parent] != i or seg_f[s.parent] <= 0.0:
 			_axis(i, seg_f, seg_col)
 		if leaves and not s.dry:
 			_foliage(s, weak[i] == 1, marked.has(i))
@@ -154,9 +169,10 @@ func _build(highlight: PackedInt32Array, leaves: bool) -> Array:
 			_wire_helix(i, s)
 		if s.wound_r > 0.0:
 			_wound(s)
-	if n > 0:
+	if n > 0 and not only:
 		_roots()
-	_fallen()
+	if not only:
+		_fallen()
 	return [_wood_mesh(), _leaf_mesh(), _needle_mesh()]
 
 

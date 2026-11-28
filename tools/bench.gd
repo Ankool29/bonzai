@@ -5,6 +5,12 @@ extends SceneTree
 
 
 func _init() -> void:
+	# compile tous les scripts : une erreur de syntaxe apparaît dans le journal (« Parse Error »)
+	for f in DirAccess.get_files_at("res://scripts"):
+		if f.ends_with(".gd"):
+			var sc: GDScript = load("res://scripts/" + f)
+			if sc == null or not sc.can_instantiate():
+				print("ERREUR DE SCRIPT : ", f)
 	var out := "| espèce | an | entre-nœuds | simulation (ms/an) | dessin (ms) | sommets |\n|---|---|---|---|---|---|\n"
 	var total := 0
 	for sp in Species.ALL:
