@@ -11,15 +11,20 @@ func _init() -> void:
 		var sim := TreeSim.new()
 		sim.reset(1, sp)
 		for y in 8:
+			# dessin en été (semaine 30), avec les feuilles ; la simulation compte l'année entière
 			var t0 := Time.get_ticks_usec()
-			for w in 52:
+			for w in 20:
 				sim.step_week()
 			var t1 := Time.get_ticks_usec()
 			var m := TreeMesh.build(sim, PackedInt32Array(), sim.week, sim.week, true)
 			var t2 := Time.get_ticks_usec()
-			total += t2 - t0
+			for w in 32:
+				sim.step_week()
+			var t3 := Time.get_ticks_usec()
+			var sim_us := (t1 - t0) + (t3 - t2)
+			total += t3 - t0
 			if y % 2 == 1:
-				out += "| %s | %d | %d | %d | %d | %d |\n" % [sp["name"], y + 1, sim.segs.size(), (t1 - t0) / 1000, (t2 - t1) / 1000, TreeMesh.vertex_count(m)]
+				out += "| %s | %d | %d | %d | %d | %d |\n" % [sp["name"], y + 1, sim.segs.size(), sim_us / 1000, (t2 - t1) / 1000, TreeMesh.vertex_count(m)]
 	out += "\nTotal : %d ms\n" % (total / 1000)
 	print("=== BANC ===")
 	print(out)
