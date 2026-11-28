@@ -69,3 +69,11 @@ sont calculés, pas mesurés. La phase 1 sert justement à mesurer.
 5. **Plus de densité** : capacité relevée selon les mesures (objectif 15 000) ; nœuds de l'érable comptés une fois.
 6. **Bois allégé** : anneaux espacés sur les vieux axes réguliers.
 7. **Si nécessaire** : C++ pour la simulation, construit par GitHub Actions.
+
+## Avancement
+- Phase 1 (mesure, PR #55) : temps et sommets dans les infos du jeu ; banc d'essai GitHub Actions
+  (`tools/bench.gd`, `.github/workflows/banc.yml`), dessin en été. Découverte : le bois seul faisait
+  ~110 sommets par entre-nœud, car chaque axe, même un rameau de 1 mm, était lissé 3 fois (anneaux × 8).
+- Phase 2 (feuilles légères) + bois allégé (PR #56). Orme à 8 ans (6 179 entre-nœuds), au banc :
+  2,65 M → 0,70 M sommets ; dessin 4,3 s → 1,5 s. Érable : 0,92 M → 0,24 M ; ginkgo : 0,46 M → 0,19 M.
+  Vérification dessinée des feuilles : docs/feuilles_phase2.png.
