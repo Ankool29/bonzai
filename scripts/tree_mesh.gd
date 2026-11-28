@@ -569,6 +569,13 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 
 			_needles(s, h, weak, selected, gone)
 		return
 	var b := s.born if born < 0.0 else born
+	var shrink := 1.0
+	if s.defol >= 0.0 and t >= s.defol and floorf(s.defol / 52.0) == floorf(t / 52.0):
+		# effeuillé (étape 28) : plus de feuille, puis une feuille plus petite au « mini-printemps »
+		if t < s.defol + TreeSim.DEFOL_REGROW:
+			return
+		b = s.defol + TreeSim.DEFOL_REGROW
+		shrink = 0.65
 	var fall := floorf(b / 52.0) * 52.0 + 44.0 + h * sim.fall_span  # chute étalée sur novembre (ginkgo : quelques jours)
 	if fall < t0:
 		return
@@ -588,7 +595,7 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 
 	var dir := Vector3(s.lat_dir.x, s.lat_dir.y * 0.3, s.lat_dir.z).normalized().rotated(Vector3.UP, turn)
 	var side := Vector3.UP.cross(dir).normalized().rotated(dir, (h - 0.5) * 0.8)
 	var nrm := dir.cross(side).normalized()
-	var l := sim.foliage_size * (0.6 + 0.4 * s.leaf_k) * s.size_k * scale  # plus petites à la base et sur une pousse faible
+	var l := sim.foliage_size * (0.6 + 0.4 * s.leaf_k) * s.size_k * scale * shrink  # plus petites à la base, sur une pousse faible, après un effeuillage
 	var wmax := l * 0.27
 	var b0 := s.end + dir * 0.003  # base du limbe, au bout du pétiole
 	lb0 = b0

@@ -190,6 +190,18 @@ func _open(i: int) -> void:
 	_recenter()
 
 
+## Effeuillage (étape 28) : la branche choisie (partiel, feuilles du bout gardées), sinon tout l'arbre.
+func _defoliate() -> void:
+	if _busy():
+		return
+	var only := sim.subtree(axis[cut_k]) if cut_k >= 0 else PackedInt32Array()
+	_say(sim.defoliate(only))
+	garden.save_tree(garden.current)
+	_clear_cut()
+	layout = sim.layout
+	_refresh()
+
+
 func _pine_work(mekiri: bool) -> void:
 	if _busy():
 		return
@@ -305,6 +317,7 @@ func _build_ui() -> void:
 		b.toggle_mode = true
 		tool_btns.append(b)
 	cut_btn = _button(pages[1], "Couper", _cut, "couper")
+	_button(pages[1], "Effeuiller (toute la branche choisie, ou tout l'arbre)", _defoliate, "effeuiller")
 	pine_btns.append(_button(pages[1], "Mekiri", _pine_work.bind(true), "mekiri"))
 	pine_btns.append(_button(pages[1], "Trier les bourgeons", _pine_work.bind(false), "trier"))
 	wire_btn = _button(pages[2], "Ligaturer", _act, "ligaturer")
@@ -755,8 +768,14 @@ func _cut() -> void:
 	if i == 0:
 		_say("On ne coupe pas le tronc à sa base.")
 		return
-	if tool == 0 and s.born < sim.week - 8:
-		_say("Le pinçage ne marche que sur les pousses vertes de moins de deux mois.")
+	if tool == 0:  # pincement (étape 28) : pousse tendre seulement, les bourgeons restants repartent vite
+		var m := sim.pinch(i)
+		_say(m)
+		if m.begins_with("Pincée"):
+			garden.save_tree(garden.current)
+			_clear_cut()
+			layout = sim.layout
+			_refresh()
 		return
 	if tool == 1 and s.radius > TreeSim.WOUND_MIN:
 		_say("Trop épais pour les ciseaux : prends la pince concave.")
