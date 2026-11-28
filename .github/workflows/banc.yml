@@ -1,0 +1,21 @@
+# Banc d'essai du moteur (audit, phase 1) : Godot sans écran, temps par espèce, dans le résumé de l'action.
+name: Banc d'essai
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  banc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Godot
+        run: |
+          curl -sSL -o godot.zip https://github.com/godotengine/godot/releases/download/4.5-stable/Godot_v4.5-stable_linux.x86_64.zip
+          unzip -q godot.zip
+          mv Godot_v4.5-stable_linux.x86_64 godot
+      - name: Import du projet
+        run: timeout 300 ./godot --headless --import --path . || true
+      - name: Mesure
+        run: |
+          timeout 1200 ./godot --headless --path . -s res://tools/bench.gd 2>&1 | tee banc.txt
+          sed -n '/=== BANC ===/,$p' banc.txt | tail -n +2 >> "$GITHUB_STEP_SUMMARY"

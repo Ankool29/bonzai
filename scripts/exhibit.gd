@@ -46,6 +46,7 @@ func show_tree(s: int, sim: TreeSim) -> void:
 	var m := TreeMesh.build(sim, PackedInt32Array(), sim.week, sim.week, true)
 	var mats := [TreeMesh.bark_material(sim), TreeMesh.toon(0, Color.WHITE, false, 2), TreeMesh.toon(0, Color.WHITE, false, 2)]
 	mats[1].set_shader_parameter("autumn_color", sim.autumn_color)
+	mats[1].set_shader_parameter("leaf_shape", sim.leaf_shape)
 	mats[2].set_shader_parameter("deciduous", false)
 	for k in 3:
 		var mi := MeshInstance3D.new()

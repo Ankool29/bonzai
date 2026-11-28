@@ -24,6 +24,8 @@ var pot_mi := MeshInstance3D.new()
 var soil_mi := MeshInstance3D.new()
 var wood_mi := MeshInstance3D.new()
 var leaves_mi := MeshInstance3D.new()
+var hl_wood := MeshInstance3D.new()  # surbrillance de la branche choisie (audit, phase 3), vue à travers le feuillage
+var hl_leaf := MeshInstance3D.new()
 var needles_mi := MeshInstance3D.new()
 var cam := Camera3D.new()
 var world := Node3D.new()
@@ -49,7 +51,9 @@ var show_leaves := true
 var layout := 0
 var task := -1        # calcul de la période en cours (WorkerThreadPool), -1 si aucun
 var built := []       # résultat du calcul : maillages de fin de période
-var calc_ms := 0      # durée du dernier calcul
+var calc_ms := 0      # durée du dernier calcul (simulation + dessin)
+var sim_ms := 0       # dont simulation
+var vert_k := 0       # milliers de sommets du dernier dessin
 var last_touch := 0   # ms du dernier toucher (cadence d'affichage)
 var anim_t0 := 0.0    # période animée (semaines)
 var anim_t1 := 0.0
@@ -115,6 +119,16 @@ func _ready() -> void:
 	nm.set_shader_parameter("deciduous", false)
 	needles_mi.material_override = nm
 	world.add_child(needles_mi)
+	var hm := StandardMaterial3D.new()
+	hm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	hm.albedo_color = Color(0.95, 0.2, 0.12, 0.55)
+	hm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	hm.no_depth_test = true
+	hm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	for mi in [hl_wood, hl_leaf]:
+		mi.material_override = hm
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		world.add_child(mi)
 	_add_pot()
 	cam.near = 0.005
 	cam.far = 20.0
@@ -166,6 +180,7 @@ func _open(i: int) -> void:
 	wood_mi.material_override = TreeMesh.bark_material(sim)
 	var lm := leaves_mi.material_override as ShaderMaterial
 	lm.set_shader_parameter("autumn_color", sim.autumn_color)
+	lm.set_shader_parameter("leaf_shape", sim.leaf_shape)
 	_clear_cut()
 	layout = sim.layout
 	for b in pine_btns:
@@ -465,7 +480,7 @@ func _work(s: int) -> void:
 
 func _mode() -> void:
 	exhibit.visible = in_garden
-	for n in [wood_mi, leaves_mi, needles_mi, pot_mi, soil_mi, overlay]:
+	for n in [wood_mi, leaves_mi, needles_mi, pot_mi, soil_mi, overlay, hl_wood, hl_leaf]:
 		n.visible = not in_garden
 	panel.visible = not in_garden
 	gauges.visible = not in_garden
@@ -607,8 +622,10 @@ func _advance(weeks: int) -> void:
 	task = WorkerThreadPool.add_task(func():
 		for i in weeks:  # chaque arbre a sa propre date : seul l'arbre ouvert pousse
 			sim.step_week()
+		sim_ms = Time.get_ticks_msec() - start_ms
 		built = TreeMesh.build(sim, PackedInt32Array(), t_start, sim.week, leaves)
-		calc_ms = Time.get_ticks_msec() - start_ms)
+		calc_ms = Time.get_ticks_msec() - start_ms
+		vert_k = TreeMesh.vertex_count(built) / 1000)
 
 
 func _process(delta: float) -> void:
@@ -762,6 +779,8 @@ func _clear_cut() -> void:
 	cut_k = -1
 	dragging_cut = false
 	_draw_overlay()
+	hl_wood.mesh = null
+	hl_leaf.mesh = null
 
 
 func _toggle_leaves() -> void:
@@ -773,11 +792,21 @@ func _toggle_leaves() -> void:
 
 ## Arbre immobile à la date actuelle (après une coupe, une sélection, un changement d'affichage).
 func _refresh() -> void:
-	var hl := sim.subtree(axis[cut_k]) if cut_k >= 0 else PackedInt32Array()
 	anim_t0 = sim.week
 	anim_t1 = sim.week
-	_show(TreeMesh.build(sim, hl, sim.week, sim.week, show_leaves))
+	_show(TreeMesh.build(sim, PackedInt32Array(), sim.week, sim.week, show_leaves))
 	_set_time(sim.week)
+	_highlight()
+
+
+## Surbrillance de la branche choisie : un petit maillage à part, l'arbre n'est pas reconstruit.
+func _highlight() -> void:
+	hl_wood.mesh = null
+	hl_leaf.mesh = null
+	if cut_k >= 0:
+		var m := TreeMesh.build_only(sim, sim.subtree(axis[cut_k]), show_leaves)
+		hl_wood.mesh = m[0]
+		hl_leaf.mesh = m[1]
 	_update_act()
 	_info(sim.week)
 	_draw_overlay()
@@ -801,7 +830,8 @@ func _info(time: float) -> void:
 		season = "été"
 	elif w >= 37 and w < 50:
 		season = "automne"
-	var extra := "calcul %d ms" % calc_ms if calc_ms > 0 else "%d segments" % sim.segs.size()
+	# mesure (audit, phase 1) : simulation + dessin, entre-nœuds, sommets dessinés
+	var extra := "sim %d + dessin %d ms · %d seg · %d k sommets" % [sim_ms, calc_ms - sim_ms, sim.segs.size(), vert_k] if calc_ms > 0 else "%d segments" % sim.segs.size()
 	var v := sim.last_vigor
 	if cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0:
 		extra += " · " + sim.wire_state(sim.segs[axis[cut_k]].wire)
@@ -890,7 +920,7 @@ func _unhandled_input(ev: InputEvent) -> void:
 			if dragging_cut and touches.is_empty():
 				dragging_cut = false
 				if tap_moved:
-					_refresh()  # la partie retirée s'affiche en rouge
+					_highlight()  # la partie retirée s'affiche en rouge
 					return
 			if touches.is_empty() and not tap_moved:
 				var now := Time.get_ticks_msec()
@@ -998,7 +1028,7 @@ func _select_at(pos: Vector2) -> void:
 			axis.append(b)
 			b = sim.segs[b].main_child
 		cut_k = axis.find(i)
-	_refresh()
+	_highlight()
 
 
 func _cut_screen_pos() -> Vector2:

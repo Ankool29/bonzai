@@ -22,7 +22,8 @@ uniform vec3 tone1 : source_color = vec3(0.56, 0.55, 0.5);
 uniform vec3 tone2 : source_color = vec3(0.5, 0.52, 0.42);
 uniform vec3 tone3 : source_color = vec3(0.72, 0.5, 0.3);
 uniform vec3 fissure : source_color = vec3(0.33, 0.28, 0.24);
-uniform vec3 stones[3];  // gravier : x, z, rayon des pierres (coordonnées du monde)
+uniform vec3 stones[3];
+uniform int leaf_shape = -1;  // feuilles : 0 orme, 1 érable, 2 ginkgo ; contour et nervures tracés ici (audit, phase 2)  // gravier : x, z, rayon des pierres (coordonnées du monde)
 
 varying vec3 wpos;
 varying float young_k;
@@ -172,6 +173,37 @@ void fragment() {
 		c = albedo.rgb * (fract(l) < 0.22 ? 0.86 : 1.0) * (h(floor(wpos.xz / 0.02), 2.0) < 0.2 ? 0.95 : 1.0);
 	}
 	c = mix(c, autumn_color, autumn_k * 0.85);
+	if (leaf_shape >= 0 && UV.x > 0.0) {
+		// UV.x : 0 au centre du limbe, 1 au bord ; UV2 : position dans le plan de la feuille, base du limbe en 0,
+		// unité = longueur de la feuille, x le long de la nervure centrale, y sur le côté.
+		vec2 q = UV2;
+		bool vein = false;
+		if (leaf_shape == 0) {
+			// orme : nervure centrale, 5 paires de nervures secondaires obliques vers le bord
+			float k = (q.x - abs(q.y) * 0.6) / (0.85 / 6.0);
+			vein = (abs(q.y) < 0.012 && q.x < 0.95) || (abs(q.y) > 0.01 && abs(k - round(k)) < 0.06 && round(k) >= 1.0 && round(k) <= 5.0);
+		} else {
+			float a = atan(q.y, q.x);
+			float r = length(q);
+			if (leaf_shape == 1) {
+				// érable : une nervure par lobe (5 ou 7, dans l'alpha de la couleur), depuis la base du limbe
+				float lobes = round(COLOR.a * 10.0);
+				float spread = radians(lobes > 6.0 ? 105.0 : 95.0);
+				float gap = spread * 2.0 / (lobes - 1.0);
+				float i = clamp(round((a + spread) / gap), 0.0, lobes - 1.0);
+				vein = abs(a - (-spread + gap * i)) * r < 0.006 && r < 0.27;
+			} else {
+				// ginkgo : fines nervures en éventail, à peine plus sombres
+				vein = abs(fract(a / 0.14 + 0.5) - 0.5) * 0.14 * r < 0.0035 && r > 0.04;
+			}
+		}
+		if (vein) {
+			c *= leaf_shape == 2 ? 0.88 : 0.75;
+		}
+		if (UV.x > 0.95) {
+			c = vec3(0.08, 0.14, 0.06);  // contour fin à l'encre
+		}
+	}
 	ALBEDO = c;
 	if (!FRONT_FACING) {
 		NORMAL = -NORMAL;
