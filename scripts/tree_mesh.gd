@@ -59,6 +59,16 @@ static func build(s: TreeSim, highlight: PackedInt32Array, t_start: float, t_end
 	return m._build(highlight, leaves)
 
 
+## Nombre de sommets d'un dessin (mesure).
+static func vertex_count(m: Array) -> int:
+	var n := 0
+	for mesh in m:
+		if mesh is ArrayMesh:
+			for k in mesh.get_surface_count():
+				n += mesh.surface_get_array_len(k)
+	return n
+
+
 ## Matériau cel shading (voir shaders/toon.gdshader), avec contour optionnel.
 static func toon(pattern: int, color := Color.WHITE, outline := false, anim := 0) -> ShaderMaterial:
 	var mat := ShaderMaterial.new()
