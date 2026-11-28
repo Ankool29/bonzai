@@ -41,6 +41,7 @@ class Seg:
 	var mark := 0.0          # marque laissée par un fil qui a mordu (0 à 1), s'efface avec les cernes
 	var crack := false       # fêlée en pliant : une chance sur deux de dépérir à la fin de l'été
 	var defol := -1.0        # semaine de l'effeuillage (étape 28), -1 : jamais
+	var kick := false        # bourgeon réveillé par un pincement ou un effeuillage : part à la poussée provoquée
 	# recalculés à chaque poussée
 	var light := 0.0
 	var count := 0
@@ -268,6 +269,8 @@ func step_week() -> void:
 		_flush(0.6)
 		extra_defol = false
 		extra_local = false
+		for s in segs:
+			s.kick = false  # le réveil ne vaut que pour cette poussée
 	if w == DIEBACK_WEEK:
 		_dieback()
 	if w == 0:
@@ -468,10 +471,13 @@ func pinch(i: int) -> String:
 	var j := s.parent
 	prune(i)
 	_spend(-0.4 * lost)  # la coupe ordinaire coûte 0,5 ; la pousse tendre seulement 0,1
+	# Les 2 nœuds restants partent tout de suite, sans garder de bonus de vigueur pour les poussées suivantes :
+	# sinon ils captaient la vigueur de l'été et refaisaient de longues pousses (le pincement ne raccourcissait rien).
 	for k in 2:
 		if j < 0:
 			break
-		segs[j].release = release_boost
+		segs[j].release = 1.0
+		segs[j].kick = true
 		j = segs[j].parent
 	var wk := week % 52
 	if wk >= 12 and wk <= 30 and (extra_flush <= week):
@@ -505,7 +511,7 @@ func defoliate(only := PackedInt32Array()) -> String:
 		if s.dry or (not only.is_empty() and s.main_child < 0):
 			continue
 		s.defol = week
-		s.release = release_boost  # les bourgeons à l'aisselle des feuilles retirées partiront
+		s.kick = true  # les bourgeons à l'aisselle des feuilles retirées partiront au mini-printemps
 		lost += s.q_term + s.q_lat
 		n += 1
 		if s.weak > 0 and rng.randf() < 0.5:  # une branche déjà faible ne le supporte pas
@@ -889,7 +895,7 @@ func _grow() -> void:
 		# Pin, poussée d'été : seuls les bourgeons très vigoureux (ou nés d'une coupe de chandelle) partent.
 		var summer := whorl > 0 and flush_now < 1.0 and not s.forced
 		if extra_local:  # poussée provoquée : seuls les bourgeons libérés (pincés, effeuillés) partent, presque tous
-			if s.release <= 1.0:
+			if not s.kick:
 				s.v_term = 0.0
 				s.v_lat = 0.0
 				continue
