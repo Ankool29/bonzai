@@ -77,3 +77,9 @@ sont calculés, pas mesurés. La phase 1 sert justement à mesurer.
 - Phase 2 (feuilles légères) + bois allégé (PR #56). Orme à 8 ans (6 179 entre-nœuds), au banc :
   2,65 M → 0,70 M sommets ; dessin 4,3 s → 1,5 s. Érable : 0,92 M → 0,24 M ; ginkgo : 0,46 M → 0,19 M.
   Vérification dessinée des feuilles : docs/feuilles_phase2.png.
+- Phase 3 (sélection) : surbrillance par un petit maillage à part, vue à travers le feuillage ; seule une coupe
+  reconstruit l'arbre.
+- Phase 4 (ombre) : simulation de l'orme à 8 ans 0,62 → 0,25 s par an au banc, entre-nœuds identiques.
+- Phase 5 (densité) : limite à 15 000 ; l'orme non taillé atteint 8 681 entre-nœuds à 8 ans, freiné par le pot.
+  Bilan orme 8 ans : 0,82 M sommets (2,65 M avant) pour 40 % d'entre-nœuds en plus.
+- Restent possibles : segments en tableaux compacts ; C++ si les mesures sur téléphone le demandent.
