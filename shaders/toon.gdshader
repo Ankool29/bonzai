@@ -1,7 +1,9 @@
 // Cel shading : éclairage arrondi à 3 tons nets (lumière, mi-teinte, ombre), ombres portées nettes.
 // L'ombre prend la couleur de la lumière ambiante (bleutée), pas du gris.
 // pattern : 0 = couleur de sommet × albedo ; 1 = écorce d'orme (plaques) ; 2 = écorce de pin (fissures) ;
-// 3 = terre (granulés) ; 4 = écorce d'érable (lisse, stries) ; 5 = gravier ratissé (lignes, ondes autour des pierres). Écorce : UV.x = fraction du tour, UV.y = longueur (m), UV2.x = cellules de 2,5 mm
+// 3 = terre (granulés) ; 4 = écorce d'érable (lisse, stries) ; 5 = gravier ratissé (lignes, ondes autour des pierres) ;
+// 6 = écorce de ginkgo (crêtes et sillons). Étape 27 : motifs revus d'après les descriptions botaniques (docs/ETAPE27.md),
+// prototype numpy : check/ecorce2.py. Écorce : UV.x = fraction du tour, UV.y = longueur (m), UV2.x = cellules de 2,5 mm
 // sur le tour ; couleur de sommet rgb = teinte, a = part de teinte unie (rameau de l'année, bois mort, sélection).
 shader_type spatial;
 render_mode cull_disabled, specular_disabled;
@@ -29,6 +31,17 @@ varying float autumn_k;
 
 float h(vec2 p, float s) {
 	return fract(sin(dot(p, vec2(12.9898, 78.233)) + s) * 43758.5453);
+}
+
+// Bruit de valeur lissé, périodique en x (période per) pour ne pas faire de couture autour du tronc.
+float vn(vec2 p, float per, float s) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	f = f * f * (3.0 - 2.0 * f);
+	float x0 = mod(i.x, per);
+	float x1 = mod(i.x + 1.0, per);
+	return mix(mix(h(vec2(x0, i.y), s), h(vec2(x1, i.y), s), f.x),
+			mix(h(vec2(x0, i.y + 1.0), s), h(vec2(x1, i.y + 1.0), s), f.x), f.y);
 }
 
 // Cellules de Voronoï, périodiques en x (le tour du tronc) : (distance au centre, écart au bord, hasard de la cellule).
@@ -77,36 +90,70 @@ void vertex() {
 
 void fragment() {
 	vec3 c = albedo.rgb * COLOR.rgb;
-	if (pattern == 1 || pattern == 2 || pattern == 4) {
+	if (pattern == 1 || pattern == 2 || pattern == 4 || pattern == 6) {
 		vec3 b = tone1;
 		if (pattern == 1) {
-			// orme de Chine : plaques arrondies de tailles variées qui s'écaillent (gris, beige, orangé, vert)
+			// orme de Chine : plaques grises irrégulières qui s'exfolient en révélant du cannelle, de l'orangé, du crème,
+			// plus clair au centre, bord sombre du lambeau qui se décolle (UF/IFAS ST-652, Boone County Arboretum)
 			float per = max(floor(UV2.x / 3.0), 1.0);
-			vec3 v = voro(vec2(UV.x * per, UV.y / 0.012), per, 1.0);
-			vec3 w = voro(vec2(UV.x * per * 2.0, UV.y / 0.006), per * 2.0, 4.0);  // petites écailles par-dessus
-			float id = w.z < 0.25 ? w.z * 4.0 : v.z;
+			vec2 p = vec2(UV.x * per + 0.7 * (vn(vec2(UV.x * per, UV.y / 0.02), per, 7.0) - 0.5),
+					UV.y / 0.012 + 0.9 * (vn(vec2(UV.x * per, UV.y / 0.03), per, 8.0) - 0.5));
+			vec3 v = voro(p, per, 1.0);
 			if (per >= 2.0) {
-				b = id < 0.45 ? tone1 : (id < 0.7 ? tone2 : (id < 0.88 ? tone3 : mix(tone1, vec3(0.5, 0.56, 0.4), 0.6)));
-				if (v.y < 0.04 && v.z < 0.6) {
-					b = mix(b, fissure, 0.4);
+				if (v.z < 0.66) {
+					b = mix(tone1, tone2, h(vec2(v.z, 0.0), 2.0) * 0.5) * (v.y < 0.03 ? 0.8 : 1.0);
+				} else {
+					b = (v.z < 0.85 ? tone3 : mix(tone3, vec3(0.86, 0.8, 0.66), 0.5)) * (1.1 - 0.35 * v.x);
+					if (v.y < 0.05) {
+						b = mix(b, fissure, 0.6);
+					}
 				}
 			}
 		} else if (pattern == 2) {
-			// pin noir : épaisses plaques allongées, fissures brun-rouge qui se creusent avec l'âge ; jeune bois lisse
+			// pin noir : gris sur les jeunes branches ; puis plaques allongées faites de petites écailles, gris foncé
+			// à gris-violet, fissures longitudinales brun-rouge qui se creusent avec l'âge (Conifer Society, Wikipédia)
 			float per = max(floor(UV2.x / 5.0), 1.0);
-			vec3 v = voro(vec2(UV.x * per, UV.y / 0.035), per, 2.0);
-			float w = 0.03 + 0.09 * clamp((per - 1.0) / 3.0, 0.0, 1.0);
+			float px = UV.x * per + 0.3 * (vn(vec2(UV.x * per, UV.y / 0.04), per, 3.0) - 0.5);
+			vec3 v = voro(vec2(px, UV.y / 0.05), per, 2.0);
+			vec3 sc = voro(vec2(px * 3.0, UV.y / 0.012), per * 3.0, 5.0);
 			if (UV2.x >= 8.0) {
-				b = v.z < 0.5 ? tone1 : tone2;
-				if (v.y < w) {
-					b = fissure;
+				float w = 0.03 + 0.12 * clamp((per - 1.0) / 4.0, 0.0, 1.0);
+				b = mix(tone1, tone2, v.z) * (0.9 + 0.15 * vn(vec2(UV.x * per * 6.0, UV.y / 0.006), per * 6.0, 9.0));
+				if (sc.y < 0.035) {
+					b *= 0.8;
 				}
+				if (v.y < w) {
+					b = v.y < w * 0.4 ? fissure * 0.7 : fissure;
+				}
+			} else {
+				b = tone1 * (sc.y < 0.03 ? 0.88 : 1.05);
 			}
-		} else {
-			// érable : lisse, gris-vert, fines stries claires interrompues dans le sens du bois
+		} else if (pattern == 4) {
+			// érable : lisse, gris clair, marbrures discrètes, fines stries claires interrompues, petites lenticelles
+			// (Virginia Tech Dendrology, NC State)
+			float n = max(floor(UV2.x * 0.6), 1.0);
+			b = mix(tone1, tone3, clamp((vn(vec2(UV.x * n, UV.y / 0.02), n, 3.0) - 0.55) / 0.2, 0.0, 1.0) * 0.6);
 			float col = floor(UV.x * UV2.x * 1.5);
 			float k = h(vec2(col, 0.0), 3.0);
 			if (k > 0.85 && fract(UV.y / 0.03 + k * 7.0) < 0.6) {
+				b = tone2;
+			}
+			if (h(vec2(floor(UV.x * UV2.x * 3.0), floor(UV.y / 0.0025)), 11.0) < 0.012) {
+				b *= 0.86;
+			}
+		} else {
+			// ginkgo : rameau gris-brun clair, lisse et finement strié ; tronc à crêtes verticales entrecroisées,
+			// sillons qui se creusent avec l'âge (Virginia Tech Dendrology, College of DuPage)
+			float per = max(floor(UV2.x / 2.5), 1.0);
+			if (UV2.x >= 20.0) {
+				float px = UV.x * per + 0.45 * (vn(vec2(UV.x * per, UV.y / 0.05), per, 6.0) - 0.5);
+				vec3 v = voro(vec2(px, UV.y / 0.03), per, 6.0);
+				float w = 0.02 + 0.08 * clamp((per - 8.0) / 8.0, 0.0, 1.0);
+				b = mix(tone2, tone1, clamp(v.y * 4.0, 0.0, 1.0));
+				if (v.y < w) {
+					b = v.y < w * 0.5 ? fissure * 0.75 : fissure;
+				}
+			} else if (h(vec2(floor(UV.x * UV2.x * 3.0), 0.0), 4.0) > 0.8) {
 				b = tone2;
 			}
 		}
