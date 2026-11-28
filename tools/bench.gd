@@ -33,6 +33,7 @@ func _init() -> void:
 				out += "| %s | %d | %d | %d | %d | %d |\n" % [sp["name"], y + 1, sim.segs.size(), sim_us / 1000, (t2 - t1) / 1000, TreeMesh.vertex_count(m)]
 	out += "\nTotal : %d ms\n" % (total / 1000)
 	out += _techniques()
+	out += _racines()
 	print("=== BANC ===")
 	print(out)
 	quit()
@@ -111,3 +112,34 @@ func _stats(sim: TreeSim, mode: String, june: float) -> String:
 	mode += " (entre-nœuds par pousse : moy. %.1f, max %d)" % [nsum / maxi(nn, 1), nmax]
 	return "| %s | %d | %d | %.1f | %.1f / %.1f | %.2f | %.2f / %.2f |\n" % [mode, sim.segs.size(), tips, 1000.0 * len_sum / maxi(n, 1),
 			1000.0 * mean, 1000.0 * p90, leaf_sum / maxi(n, 1), sim.health(), june]
+
+
+## Étape 29a : orme sur 6 ans ; terre baissée d'1 cm chaque printemps à partir de la 4e année (témoin : terre
+## d'origine). Racines exportées (lignes « RACINE ») pour la vérification dessinée (check/racines_nu.py).
+func _racines() -> String:
+	var out := "\n| racines (orme, 6 ans) | segments | à nu | à nu épaisses (> 2 mm) | rayon moyen à nu (mm) | santé |\n|---|---|---|---|---|---|\n"
+	for mode in ["terre d'origine", "terre baissée"]:
+		var sim := TreeSim.new()
+		sim.reset(1, Species.ELM)
+		for y in 6:
+			for w in 52:
+				sim.step_week()
+				if mode == "terre baissée" and y >= 3 and sim.week % 52 == 8:
+					sim.root.set_soil(sim.root.soil_y - 0.01)
+		var rs := sim.root
+		var nu := 0
+		var thick := 0
+		var rsum := 0.0
+		for i in rs.size():
+			if not rs.in_soil(rs.p1[i]):
+				nu += 1
+				rsum += rs.rad[i]
+				if rs.rad[i] > 0.001:
+					thick += 1
+		out += "| %s (terre %+.0f cm) | %d | %d | %d | %.2f | %.2f |\n" % [mode, rs.soil_y * 100.0, rs.size(), nu, thick, 1000.0 * rsum / maxi(nu, 1), sim.health()]
+		if mode == "terre baissée":
+			var lines := "SOL %f %f %f %f\n" % [rs.soil_y, rs.hx, rs.hz, sim.segs[0].radius]
+			for i in rs.size():
+				lines += "RACINE %f %f %f %f %f %f %f\n" % [rs.p0[i].x, rs.p0[i].y, rs.p0[i].z, rs.p1[i].x, rs.p1[i].y, rs.p1[i].z, rs.rad[i]]
+			print(lines)
+	return out

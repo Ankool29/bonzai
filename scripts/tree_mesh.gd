@@ -446,7 +446,7 @@ func _roots() -> void:
 				sel[j] = true
 	for i in n:
 		var p := rs.par[i]
-		if (p >= 0 and cont[p] == i) or (rs.p0[i].y + rs.rad[i] < -0.001 and not all_roots):
+		if (p >= 0 and cont[p] == i) or (rs.p0[i].y + rs.rad[i] < rs.soil_y - 0.001 and not all_roots):
 			continue  # prolongement d'un axe, ou départ enterré
 		sides = 6 if rs.rad[i] < 0.0015 else SIDES
 		var d := rs.dir[i]
@@ -464,7 +464,7 @@ func _roots() -> void:
 			_join(prev, cur)
 			prev = cur
 			last = rs.p1[j]
-			if rs.p1[j].y + r < -0.001 and not all_roots:
+			if rs.p1[j].y + r < rs.soil_y - 0.001 and not all_roots:
 				break  # la racine a plongé
 			j = nx
 		_cap(prev, last + d * 0.002, true)
