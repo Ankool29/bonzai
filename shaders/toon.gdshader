@@ -200,7 +200,7 @@ void fragment() {
 		if (vein) {
 			c *= leaf_shape == 2 ? 0.88 : 0.75;
 		}
-		if (UV.x > 0.91) {
+		if (UV.x > 0.95) {
 			c = vec3(0.08, 0.14, 0.06);  // contour fin à l'encre
 		}
 	}
