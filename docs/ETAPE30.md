@@ -1,6 +1,6 @@
 # Étape 30 : temps continu et pousse réaliste
 
-En attente de validation par le joueur.
+Validé par le joueur le 28/11/2026 (×1 = un jour par seconde, hiver accéléré). Fait.
 
 ## Constat (capture du joueur, érable, an 4, semaine 17)
 - Les feuilles apparaissent au bout de la pousse avant que la tige ne l'ait atteint : elles flottent dans le vide.
@@ -39,6 +39,7 @@ En attente de validation par le joueur.
   couper une pousse en train de s'allonger marche donc au jour près. Les outils de taille, de fil, le
   rempotage… ne marchent qu'en pause ; toucher un outil met en pause.
 - Sauvegarde automatique à chaque pause et tous les trois mois de jeu.
+- L'hiver (semaines 49 à 12, rien ne pousse) défile tout seul à ×50 ; on revient à la vitesse choisie au débourrement.
 
 ## Vérification
 - Banc : temps de la copie d'état et du retour en arrière par espèce (objectif : quelques ms) ; mêmes résultats en
@@ -48,3 +49,8 @@ En attente de validation par le joueur.
 ## Limites prévues
 - Sur un très gros arbre (dessin de 1 à 2 s), la mise en pause peut prendre jusqu'à ce temps avant que l'arbre
   redessiné à la bonne semaine s'affiche.
+
+## Résultats
+- Banc (arbres de 8 ans) : copie d'état 6 à 26 ms (orme très fourni : 81 ms, faite dans le fil de calcul) ; retour en
+  arrière à la pause 10 à 43 ms (orme : 144 ms) ; même arbre après un retour en arrière qu'en jouant d'un coup.
+- Dessin de la pousse avant / après : `docs/pousse_30a.png`.
