@@ -27,7 +27,7 @@ const ELM := {
 	"shed_ratio": 0.04,
 	"bud_life": 52 * 8,
 	"backbud_chance": 0.6,
-	"capacity": 6000,
+	"capacity": 15000,
 	"max_sprouts": 4,
 	# Racines (étape 23a) — orme : 7 racines primaires, secteurs marqués.
 	"root_n": 7,
@@ -74,7 +74,7 @@ const PINE := {
 	"shed_ratio": 0.06,  # aime la lumière
 	"bud_life": 52 * 3,  # les bourgeons latents meurent avec les aiguilles
 	"backbud_chance": 0.5,  # bourgeons d'aiguilles, en saison (voir prune)
-	"capacity": 6000,
+	"capacity": 15000,
 	"max_sprouts": 0,
 	# Racines (étape 23a) — pin : pivot et 4 latérales, peu ramifiées.
 	"root_n": 4,
@@ -134,7 +134,7 @@ const MAPLE := {
 	"shed_ratio": 0.04,
 	"bud_life": 52 * 4,
 	"backbud_chance": 0.5,
-	"capacity": 6000,
+	"capacity": 15000,
 	"max_sprouts": 2,
 	# Racines (étape 23a) — érable : nombreuses racines superficielles, système intégré.
 	"root_n": 9,
@@ -182,7 +182,7 @@ const GINKGO := {
 	"shed_ratio": 0.04,
 	"bud_life": 52 * 10,
 	"backbud_chance": 0.6,
-	"capacity": 6000,
+	"capacity": 15000,
 	"max_sprouts": 6,      # rejette volontiers après une taille sévère, jusqu'au pied
 	# Racines (étape 23a) — ginkgo : racines profondes, pivotantes.
 	"root_n": 5,

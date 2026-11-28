@@ -186,7 +186,7 @@ func from_data(d: Dictionary) -> void:
 	for k in d:
 		if k != "segs" and k != "count" and k != "rng_seed" and k != "rng_state" and k != "root":
 			set(k, d[k])
-	capacity = maxi(capacity, 6000)  # les arbres plantés avant l'étape 15 avaient 1500 ou 3000
+	capacity = maxi(capacity, 15000)  # limite relevée (audit, phase 5)
 	# L'apparence suit toujours la fiche espèce actuelle (un réglage graphique s'applique aussi aux anciens arbres).
 	var species: Dictionary = Species.ELM
 	for sp in Species.ALL:
