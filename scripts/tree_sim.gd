@@ -745,10 +745,12 @@ func _basipetal() -> void:
 		s.q_lat = _light(_lat_pos(s)) if s.lat_bud and has_shadow else 0.0
 		s.light = s.q_term + s.q_lat
 		s.count = 0 if s.dry else 1
-		for c in [s.main_child, s.lat_child]:
-			if c >= 0:
-				s.light += segs[c].light
-				s.count += segs[c].count
+		if s.main_child >= 0:  # sans tableau créé à chaque entre-nœud (audit, phase 4)
+			s.light += segs[s.main_child].light
+			s.count += segs[s.main_child].count
+		if s.lat_child >= 0:
+			s.light += segs[s.lat_child].light
+			s.count += segs[s.lat_child].count
 
 
 ## De la base vers les feuilles : répartition de la vigueur (Borchert-Honda).
@@ -977,25 +979,31 @@ func _light_dir(p: Vector3) -> Vector3:
 	return -g.normalized() if g.length() > 0.001 else Vector3.ZERO
 
 
+## Les bourgeons d'une même cellule projettent la même ombre : on les compte d'abord, puis on projette une fois
+## par cellule occupée (audit, phase 4 : même résultat, beaucoup moins de calcul quand le feuillage est dense).
 func _compute_shadow() -> void:
 	shadow.resize(GX * GY * GZ)
 	shadow.fill(0.0)
+	var n := {}
 	for s in segs:
 		if s.term_bud:
-			_cast(s.end)
+			var c := _cell(s.end)
+			n[c] = n.get(c, 0) + 1
 		if s.lat_bud:
-			_cast(_lat_pos(s))
+			var c := _cell(_lat_pos(s))
+			n[c] = n.get(c, 0) + 1
+	for c in n:
+		_cast(c, n[c])
 
 
-func _cast(p: Vector3) -> void:
-	var c := _cell(p)
+func _cast(c: Vector3i, count: int) -> void:
 	for q in SH_Q + 1:
 		var y := c.y - q
 		if y < 0:
 			break
 		if y >= GY:
 			continue
-		var v := SH_A * leaf_area * pow(SH_B, -q)
+		var v := SH_A * leaf_area * pow(SH_B, -q) * count
 		for dz in range(-q, q + 1):
 			var z := c.z + dz
 			if z < 0 or z >= GZ:
