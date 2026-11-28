@@ -23,6 +23,7 @@ var root_cut := 0                  # segments retirés pendant le rempotage
 var pot_mi := MeshInstance3D.new()
 var soil_mi := MeshInstance3D.new()
 var mound_mi := MeshInstance3D.new()  # butte de terre au-dessus du pot (étape 29a)
+var rock_mi := MeshInstance3D.new()   # pierre (étape 29b)
 var wood_mi := MeshInstance3D.new()
 var leaves_mi := MeshInstance3D.new()
 var hl_wood := MeshInstance3D.new()  # surbrillance de la branche choisie (audit, phase 3), vue à travers le feuillage
@@ -172,19 +173,23 @@ func _add_pot() -> void:
 	mound_mi.mesh = cy
 	mound_mi.material_override = soil_mi.material_override
 	world.add_child(mound_mi)
+	rock_mi.material_override = TreeMesh.rock_material()
+	world.add_child(rock_mi)
 
 
 func _size_pot() -> void:
 	var k := pow(sim.pot_volume / 8.0, 1.0 / 3.0)
 	pot_mi.scale = Vector3.ONE * k
-	pot_mi.position.y = -0.026 * k
+	var rim := sim.root.rim_y  # pot abaissé sous une pierre (étape 29b)
+	pot_mi.position.y = -0.026 * k + rim
 	soil_mi.scale = Vector3(k, 1.0, k)
 	# niveau de la terre (étape 29a) : plus bas dans le pot, ou en butte au-dessus
 	var sy := sim.root.soil_y
-	soil_mi.position.y = minf(sy, 0.0) + 0.0005
-	mound_mi.visible = sy > 0.0 and soil_mi.visible
-	mound_mi.scale = Vector3(0.15 * k, maxf(sy, 0.001), 0.1 * k)
-	mound_mi.position.y = sy * 0.5
+	soil_mi.position.y = minf(sy, rim) + 0.0005
+	mound_mi.visible = sy > rim and soil_mi.visible
+	mound_mi.scale = Vector3(0.15 * k, maxf(sy - rim, 0.001), 0.1 * k)
+	mound_mi.position.y = (sy + rim) * 0.5
+	rock_mi.mesh = TreeMesh.rock_mesh(sim.root) if sim.root.rock else null
 
 
 ## Ouvre l'arbre i du jardin.
@@ -354,6 +359,7 @@ func _build_ui() -> void:
 	_button(rb, "Tuile", _toggle_tile, "tuile")
 	_button(rb, "Baisser la terre (racines à nu)", _soil.bind(-0.01), "terre_bas")
 	_button(rb, "Monter la terre (butte)", _soil.bind(0.01), "terre_haut")
+	_button(rb, "Poser sur une pierre", _show_rocks, "pierre")
 	_button(rb, "Replanter", _show_repot, "rempoter")
 	root_bar.visible = false
 	# Chargement : une feuille qui tourne au milieu de l'écran pendant le calcul de la période.
@@ -441,7 +447,36 @@ func _cut_root() -> void:
 ## Niveau de la terre (étape 29a), par pas de 1 cm : baisser met des racines à nu, monter les protège en butte.
 func _soil(step: float) -> void:
 	var y := sim.root.set_soil(sim.root.soil_y + step)
-	_say("Terre à %+d cm du collet. %s" % [roundi(y * 100.0), "Les racines au-dessus sont à nu : les fines ne grossiront plus." if y < 0.0 else ("Butte : les racines restent protégées." if y > 0.0 else "Niveau d'origine.")])
+	var rim := sim.root.rim_y
+	_say("Terre à %+d cm du collet. %s" % [roundi(y * 100.0), "Racines à nu au-dessus : les fines sécheront." if y < rim else ("Butte : les racines restent protégées." if y > rim else "Au bord du pot.")])
+	_size_pot()
+
+
+## Pierre (étape 29b) : choix de la taille ; l'arbre est posé dessus, sous une butte de terre.
+func _show_rocks() -> void:
+	if sim.root.rock:
+		_say("L'arbre est déjà sur une pierre.")
+		return
+	for c in garden_panel.get_children():
+		c.queue_free()
+	var box := VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	garden_panel.add_child(box)
+	var t := Label.new()
+	t.text = "Poser l'arbre sur une pierre\nLes racines à plus de 3 cm du collet seront coupées ; la pierre est enterrée\nsous une butte, à dégager peu à peu au fil des années."
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(t)
+	for k in 3:
+		_button(box, ["Petite pierre", "Pierre moyenne", "Pierre haute"][k], func():
+			garden_panel.visible = false
+			var n0 := sim.root.size()
+			sim.root.place_rock(k)
+			root_cut += n0 - sim.root.size()
+			_size_pot()
+			_refresh()
+			_say("Posé sur la pierre, sous une butte de terre. Replante pour terminer."))
+	_button(box, "Annuler", func(): garden_panel.visible = false)
+	garden_panel.visible = true
 
 
 func _toggle_tile() -> void:
@@ -519,7 +554,8 @@ func _mode() -> void:
 	exhibit.visible = in_garden
 	for n in [wood_mi, leaves_mi, needles_mi, pot_mi, soil_mi, overlay, hl_wood, hl_leaf]:
 		n.visible = not in_garden
-	mound_mi.visible = not in_garden and sim != null and sim.root.soil_y > 0.0
+	mound_mi.visible = not in_garden and sim != null and sim.root.soil_y > sim.root.rim_y
+	rock_mi.visible = not in_garden
 	panel.visible = not in_garden
 	gauges.visible = not in_garden
 	sun.shadow_enabled = in_garden  # ombres seulement à l'exposition (chauffe)

@@ -118,14 +118,16 @@ func _stats(sim: TreeSim, mode: String, june: float) -> String:
 ## d'origine). Racines exportées (lignes « RACINE ») pour la vérification dessinée (check/racines_nu.py).
 func _racines() -> String:
 	var out := "\n| racines (orme, 6 ans) | segments | à nu | à nu épaisses (> 2 mm) | rayon moyen à nu (mm) | santé |\n|---|---|---|---|---|---|\n"
-	for mode in ["terre d'origine", "terre baissée"]:
+	for mode in ["terre d'origine", "terre baissée", "pierre"]:
 		var sim := TreeSim.new()
 		sim.reset(1, Species.ELM)
 		for y in 6:
 			for w in 52:
 				sim.step_week()
-				if mode == "terre baissée" and y >= 3 and sim.week % 52 == 8:
-					sim.root.set_soil(sim.root.soil_y - 0.01)
+				if mode == "pierre" and y == 1 and sim.week % 52 == 8:
+					sim.root.place_rock(1)
+				if mode != "terre d'origine" and y >= 3 and sim.week % 52 == 8:
+					sim.root.set_soil(sim.root.soil_y - (0.01 if mode == "terre baissée" else 0.015))
 		var rs := sim.root
 		var nu := 0
 		var thick := 0
@@ -137,8 +139,10 @@ func _racines() -> String:
 				if rs.rad[i] > 0.001:
 					thick += 1
 		out += "| %s (terre %+.0f cm) | %d | %d | %d | %.2f | %.2f |\n" % [mode, rs.soil_y * 100.0, rs.size(), nu, thick, 1000.0 * rsum / maxi(nu, 1), sim.health()]
-		if mode == "terre baissée":
-			var lines := "SOL %f %f %f %f\n" % [rs.soil_y, rs.hx, rs.hz, sim.segs[0].radius]
+		if mode != "terre d'origine":
+			var lines := "SOL %s %f %f %f %f\n" % [mode.replace(" ", "_"), rs.soil_y, rs.hx, rs.hz, sim.segs[0].radius]
+			if rs.rock:
+				lines += "ROCHE %f %f %f %f %f %f %f %f %f %f %f\n" % [rs.rock_c.x, rs.rock_c.y, rs.rock_c.z, rs.rock_r.x, rs.rock_r.y, rs.rock_r.z, rs.rock_s.x, rs.rock_s.y, rs.rock_s.z, rs.rim_y, rs.depth]
 			for i in rs.size():
 				lines += "RACINE %f %f %f %f %f %f %f\n" % [rs.p0[i].x, rs.p0[i].y, rs.p0[i].z, rs.p1[i].x, rs.p1[i].y, rs.p1[i].z, rs.rad[i]]
 			print(lines)

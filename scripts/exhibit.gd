@@ -57,20 +57,23 @@ func show_tree(s: int, sim: TreeSim) -> void:
 	var kp := pow(sim.pot_volume / 8.0, 1.0 / 3.0)  # même pot que l'écran de travail
 	var b := BoxMesh.new()
 	b.size = Vector3(0.32, 0.05, 0.22) * kp
-	_mesh(n, b, TreeMesh.toon(0, Color(0.55, 0.28, 0.2), true), Vector3(0, -0.026 * kp, 0))
+	var rim := sim.root.rim_y  # pot abaissé sous une pierre (étape 29b)
+	_mesh(n, b, TreeMesh.toon(0, Color(0.55, 0.28, 0.2), true), Vector3(0, -0.026 * kp + rim, 0))
+	if sim.root.rock:
+		_mesh(n, TreeMesh.rock_mesh(sim.root), TreeMesh.rock_material(), Vector3.ZERO)
 	var pl := PlaneMesh.new()
 	pl.size = Vector2(0.3, 0.2) * kp
 	var sy := sim.root.soil_y  # niveau de la terre (étape 29a)
 	var sm := TreeMesh.toon(3, Color(0.5, 0.33, 0.22))
-	_mesh(n, pl, sm, Vector3(0, minf(sy, 0.0) + 0.0005, 0))
-	if sy > 0.0:
+	_mesh(n, pl, sm, Vector3(0, minf(sy, rim) + 0.0005, 0))
+	if sy > rim:
 		var cy := CylinderMesh.new()
 		cy.top_radius = 0.35
 		cy.bottom_radius = 1.0
 		cy.height = 1.0
-		var mm := _mesh(n, cy, sm, Vector3(0, sy * 0.5, 0))
-		mm.scale = Vector3(0.15 * kp, sy, 0.1 * kp)
-	n.set_meta("dy", 0.051 * kp)  # le pot repose sur l'emplacement
+		var mm := _mesh(n, cy, sm, Vector3(0, (sy + rim) * 0.5, 0))
+		mm.scale = Vector3(0.15 * kp, sy - rim, 0.1 * kp)
+	n.set_meta("dy", 0.051 * kp - rim)  # le pot repose sur l'emplacement (plus haut sous une pierre)
 	add_child(n)
 	nodes[s] = n
 	place(s)
