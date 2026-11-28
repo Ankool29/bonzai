@@ -40,6 +40,7 @@ class Seg:
 	var wire := 0            # fil posé (identifiant dans TreeSim.wires), 0 : aucun
 	var mark := 0.0          # marque laissée par un fil qui a mordu (0 à 1), s'efface avec les cernes
 	var crack := false       # fêlée en pliant : une chance sur deux de dépérir à la fin de l'été
+	var defol := -1.0        # semaine de l'effeuillage (étape 28), -1 : jamais
 	# recalculés à chaque poussée
 	var light := 0.0
 	var count := 0
@@ -91,7 +92,11 @@ var leaf_years := 0           # 0 : caduc ; sinon durée de vie des aiguilles (l
 ## Semaine de l'année -> force de la poussée (printemps puis petite poussée d'été).
 var flushes := {15: 1.0, 18: 1.0, 21: 0.8, 27: 0.5}
 var flush_now := 1.0          # force de la poussée en cours (< 1 : poussée d'été)
-var extra_flush := -1         # semaine de la poussée provoquée par une coupe de chandelles (pin)
+var extra_flush := -1         # semaine de la poussée provoquée (mekiri, pincement, effeuillage)
+var extra_defol := false      # la poussée provoquée suit un effeuillage : « mini-printemps », feuilles plus petites
+var extra_local := false      # poussée provoquée par un pincement ou un effeuillage : seuls les bourgeons libérés partent
+var debt := 0.0               # coût des gestes faits quand les réserves sont vides (été) : retenu sur le remplissage de fin d'été
+const DEFOL_REGROW := 4       # semaines sans feuilles après un effeuillage
 const GROW_WEEKS := 3.0       # durée d'allongement d'une pousse (écart entre deux poussées)
 const DIEBACK_WEEK := 35      # fin d'été : bilan de lumière des branches
 
@@ -261,6 +266,8 @@ func step_week() -> void:
 		_flush(flushes[w])
 	if week == extra_flush:
 		_flush(0.6)
+		extra_defol = false
+		extra_local = false
 	if w == DIEBACK_WEEK:
 		_dieback()
 	if w == 0:
@@ -407,6 +414,26 @@ func health() -> float:
 	return reserve / maxf(roots, 0.001)
 
 
+## Coût d'un geste en réserves ; ce qui manque devient une dette, retenue à la fin de l'été (en été les
+## réserves sont vides : sans cela, tailler ou effeuiller en pleine saison ne coûtait rien).
+func _spend(cost: float) -> void:
+	if cost < 0.0:  # remboursement (pincement) : d'abord la dette
+		var back := minf(debt, -cost)
+		debt -= back
+		reserve += -cost - back
+		return
+	var take := minf(reserve, cost)
+	reserve -= take
+	debt += cost - take
+
+
+## Forme du moment (étape 28) : réserves plus ce que capte le feuillage, rapportés aux racines. En été les
+## réserves sont basses (les poussées les ont dépensées) même sur un arbre vigoureux : c'est la forme qui
+## dit si un mekiri ou un effeuillage est supportable.
+func vigor_now() -> float:
+	return (reserve + segs[0].light) / maxf(roots, 0.001)
+
+
 ## Rempotage : nouveau pot (litres) et part des racines coupées. Hors fin d'hiver, l'arbre souffre.
 ## Renvoie un message pour le joueur.
 func repot(volume: float, cut: float) -> String:
@@ -426,6 +453,76 @@ func repot(volume: float, cut: float) -> String:
 		reserve *= 0.5
 		return txt + "Racines coupées en pleine pousse : l'arbre souffre."
 	return txt + "Rempoté hors saison : les racines repartiront au printemps."
+
+
+## Pincement aux doigts (étape 28) : seulement une pousse tendre (moins de 5 semaines). Presque rien n'y était
+## investi ; les 1 ou 2 bourgeons qui restent partent 2 à 3 semaines plus tard : une fourche aux entre-nœuds courts
+## (Walston, Evergreen Gardenworks ; Bonsai4me).
+func pinch(i: int) -> String:
+	if i <= 0 or i >= segs.size():
+		return ""
+	var s := segs[i]
+	if week - s.born > 5.0 or s.dry:
+		return "Pousse trop dure pour les doigts : prends les ciseaux."
+	var lost := s.light
+	var j := s.parent
+	prune(i)
+	_spend(-0.4 * lost)  # la coupe ordinaire coûte 0,5 ; la pousse tendre seulement 0,1
+	for k in 2:
+		if j < 0:
+			break
+		segs[j].release = release_boost
+		j = segs[j].parent
+	var wk := week % 52
+	if wk >= 12 and wk <= 30 and (extra_flush <= week):
+		extra_flush = week + 2 + rng.randi() % 2
+		extra_local = true
+	return "Pincée : les bourgeons restants partiront dans 2 à 3 semaines."
+
+
+## Effeuillage (étape 28), au repos du milieu de l'été. Sans only : tout l'arbre ; avec only (une branche) :
+## partiel, la feuille du bout de chaque pousse reste (elle tire la sève). Pendant DEFOL_REGROW semaines, les
+## parties effeuillées ne captent presque plus de lumière : la vigueur part vers celles qui ont gardé leurs
+## feuilles (rééquilibrage). Puis « mini-printemps » : les bourgeons partent là où étaient les feuilles, avec des
+## feuilles plus petites et des entre-nœuds courts. Coût : les réserves (Bonsai4me, Bonsai Tonight, Bonsai Bark).
+func defoliate(only := PackedInt32Array()) -> String:
+	if leaf_years > 0 or leaf_shape == 2:
+		return "Cette espèce ne s'effeuille pas : elle ne referait pas ses feuilles."
+	var wk := week % 52
+	if wk < 21 or wk > 27:
+		return "L'effeuillage se fait au repos du milieu de l'été, de fin mai à début juillet."
+	if vigor_now() < 0.8:
+		return "Arbre trop faible pour l'effeuillage : laisse-le reprendre des forces."
+	var lst := only
+	if lst.is_empty():
+		lst.resize(segs.size())
+		for i in segs.size():
+			lst[i] = i
+	var lost := 0.0
+	var n := 0
+	for i in lst:
+		var s := segs[i]
+		if s.dry or (not only.is_empty() and s.main_child < 0):
+			continue
+		s.defol = week
+		s.release = release_boost  # les bourgeons à l'aisselle des feuilles retirées partiront
+		lost += s.q_term + s.q_lat
+		n += 1
+		if s.weak > 0 and rng.randf() < 0.5:  # une branche déjà faible ne le supporte pas
+			for k in subtree(i):
+				segs[k].dry = true
+				segs[k].term_bud = false
+				segs[k].lat_bud = false
+				segs[k].dry_week = week
+	if n == 0:
+		return "Rien à effeuiller ici."
+	_spend(0.7 * lost)  # semaines sans photosynthèse et nouvelles feuilles à fabriquer
+	extra_flush = week + DEFOL_REGROW - 1 + rng.randi() % 2
+	extra_defol = true
+	extra_local = true
+	_basipetal()
+	return ("Effeuillé" if only.is_empty() else "Branche effeuillée (feuilles du bout gardées)") + \
+			" : nouvelles feuilles, plus petites, dans 3 à 4 semaines."
 
 
 ## Pin (étape 24) : chandelles de l'année (pousses du printemps parties d'un bois plus vieux).
@@ -448,7 +545,7 @@ func mekiri() -> String:
 	var wk := week % 52
 	if wk < 20 or wk > 28:
 		return "Le mekiri se fait quand les chandelles ont fini de pousser : fin mai à début juillet."
-	if health() < 0.6:
+	if vigor_now() < 0.8:
 		return "Arbre trop faible pour le mekiri : laisse-le reprendre des forces cette année."
 	var cs := candles()
 	var n := 0
@@ -514,7 +611,7 @@ func prune(i: int, concave := false) -> bool:
 		return false
 	var j := segs[i].parent
 	var cut := segs[i]
-	reserve = maxf(0.0, reserve - 0.5 * cut.light)  # l'énergie investie dans le feuillage coupé est perdue
+	_spend(0.5 * cut.light)  # l'énergie investie dans le feuillage coupé est perdue
 	var y0 := floorf(week / 52.0) * 52.0
 	# Pin : chandelle de l'année coupée à sa base = mekiri. Couronne de 0 à 4 entre-nœuds (n + 1 bourgeons)
 	# selon la vigueur de la chandelle retirée ; elle part 2 à 4 semaines plus tard si on coupe de fin mai
@@ -698,7 +795,8 @@ func _dieback() -> void:
 	# Fin d'été : les feuilles ont rempli les réserves ; les racines suivent la couronne (rapport racines /
 	# couronne constant), sans dépasser le pot, et meurent à moitié de l'excès quand la couronne a été réduite.
 	var l := segs[0].light
-	reserve = minf(reserve + l, 1.5 * roots)
+	reserve = clampf(reserve + l - debt, 0.0, 1.5 * roots)
+	debt = 0.0
 	var t := minf(l, pot_volume * ROOTS_PER_LITRE)
 	roots = minf(t, roots * 2.0 + 5.0) if t > roots else roots + (t - roots) * 0.5
 	for i in range(1, segs.size()):
@@ -741,8 +839,9 @@ func _basipetal() -> void:
 	var has_shadow := shadow.size() == GX * GY * GZ
 	for i in range(segs.size() - 1, -1, -1):
 		var s := segs[i]
-		s.q_term = _light(s.end) if s.term_bud and has_shadow else 0.0
-		s.q_lat = _light(_lat_pos(s)) if s.lat_bud and has_shadow else 0.0
+		var lf := _leafless(s)
+		s.q_term = _light(s.end) * lf if s.term_bud and has_shadow else 0.0
+		s.q_lat = _light(_lat_pos(s)) * lf if s.lat_bud and has_shadow else 0.0
 		s.light = s.q_term + s.q_lat
 		s.count = 0 if s.dry else 1
 		if s.main_child >= 0:  # sans tableau créé à chaque entre-nœud (audit, phase 4)
@@ -789,6 +888,13 @@ func _grow() -> void:
 		# Démarre avec une probabilité égale à sa vigueur (sous 1 : rameau court).
 		# Pin, poussée d'été : seuls les bourgeons très vigoureux (ou nés d'une coupe de chandelle) partent.
 		var summer := whorl > 0 and flush_now < 1.0 and not s.forced
+		if extra_local:  # poussée provoquée : seuls les bourgeons libérés (pincés, effeuillés) partent, presque tous
+			if s.release <= 1.0:
+				s.v_term = 0.0
+				s.v_lat = 0.0
+				continue
+			s.v_term = 0.5 + rng.randf() * 0.7  # réponse courte : rameau court ou 1 à 2 entre-nœuds
+			s.v_lat = 0.5 + rng.randf() * 0.7
 		if s.term_bud and (s.v_term >= 1.0 if summer else s.v_term + rng.randf() >= 1.0):
 			var d := s.end - s.start
 			if s.relay:  # repart du bourgeon latéral : l'axe fait un coude
@@ -817,6 +923,12 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 	if preformed > 0:
 		n = clampi(int(preformed + (0.0 if spur else v) + rng.randf()), 1, max_per_flush)
 	var len_v := spur_len if spur else clampf(0.6 + 0.15 * v, 0.7, 1.5)
+	# Étape 28 : à l'ombre, la pousse s'étire et ses feuilles grandissent (étiolement) ; au soleil, c'est
+	# l'inverse. Poussées d'été plus courtes, aux feuilles plus petites ; après un effeuillage, plus encore.
+	var lum := _light(segs[parent_i].end) if shadow.size() == GX * GY * GZ else 0.6
+	var season := 1.0 if flush_now >= 1.0 else (0.7 if extra_defol else 0.8)
+	len_v *= (1.25 - 0.35 * lum) * (1.0 if spur else season)
+	var leaf_f := (1.2 - 0.35 * lum) * season
 	var first := -1
 	var prev := parent_i
 	var d := dir.normalized()
@@ -831,7 +943,7 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 		s.parent = prev
 		s.start = p
 		s.leaf_k = float(k + 1) / n
-		s.size_k = clampf(0.6 + 0.25 * v, 0.6, 1.3)  # pousse faible : petites feuilles (miniaturisation)
+		s.size_k = clampf(0.6 + 0.25 * v, 0.6, 1.3) * leaf_f  # pousse faible, soleil, été : petites feuilles
 		var profile := 1.0 if spur else 0.85 + 0.35 * sin(PI * (k + 0.5) / n)
 		if opposite and not spur:
 			profile = 0.35 if k == 0 else 0.8 + 0.5 * float(k) / n  # première paire serrée, puis de plus en plus long
@@ -986,17 +1098,23 @@ func _compute_shadow() -> void:
 	shadow.fill(0.0)
 	var n := {}
 	for s in segs:
+		var lf := _leafless(s)  # effeuillé : presque plus d'ombre portée
 		if s.term_bud:
 			var c := _cell(s.end)
-			n[c] = n.get(c, 0) + 1
+			n[c] = n.get(c, 0.0) + lf
 		if s.lat_bud:
 			var c := _cell(_lat_pos(s))
-			n[c] = n.get(c, 0) + 1
+			n[c] = n.get(c, 0.0) + lf
 	for c in n:
 		_cast(c, n[c])
 
 
-func _cast(c: Vector3i, count: int) -> void:
+## Effeuillé depuis moins de DEFOL_REGROW semaines : 0,15 (il ne reste que les bourgeons), sinon 1.
+func _leafless(s: Seg) -> float:
+	return 0.15 if s.defol >= 0.0 and week >= s.defol and week < s.defol + DEFOL_REGROW else 1.0
+
+
+func _cast(c: Vector3i, count: float) -> void:
 	for q in SH_Q + 1:
 		var y := c.y - q
 		if y < 0:
