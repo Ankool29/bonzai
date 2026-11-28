@@ -36,6 +36,7 @@ func _init() -> void:
 	out += _racines()
 	out += _pause()
 	out += _genevrier()
+	out += _diag_genevrier()
 	print("=== BANC ===")
 	print(out)
 	quit()
@@ -217,4 +218,27 @@ func _genevrier() -> String:
 		for sg in sim.segs:
 			lines += "JSEG %f %f %f %f %f %f %f %f %d %d %f\n" % [sg.start.x, sg.start.y, sg.start.z, sg.end.x, sg.end.y, sg.end.z, sg.radius, sg.born, int(sg.juv), int(sg.dry), sg.phase]
 		print(lines)
+	return out
+
+
+## Diagnostic temporaire (étape 31) : le genévrier s'arrête de pousser ; variantes pour isoler la cause.
+func _diag_genevrier() -> String:
+	var out := "\n| diag genévrier | an1 seg | an2 seg | an3 seg | santé an3 | racines | lumière |\n|---|---|---|---|---|---|---|\n"
+	for v in ["tel quel", "poussées orme", "non opposé", "caduc", "entre-nœud 1 cm", "fiche orme + écailles"]:
+		var sim := TreeSim.new()
+		sim.reset(1, Species.JUNIPER if v != "fiche orme + écailles" else Species.ELM)
+		match v:
+			"poussées orme": sim.flushes = {14: 1.0, 22: 0.7, 30: 0.4}
+			"non opposé": sim.opposite = false
+			"caduc": sim.leaf_years = 0
+			"entre-nœud 1 cm": sim.internode = 0.01
+			"fiche orme + écailles": sim.leaf_shape = 3
+		var n := []
+		for y in 3:
+			for w in 52:
+				sim.step_week()
+				if y == 0 and (sim.week % 52 in [13, 15, 20, 25, 31, 34, 36, 37]):
+					print("DIAG %s sem %d seg %d res %.3f roots %.3f light %.3f vig %.3f" % [v, sim.week, sim.segs.size(), sim.reserve, sim.roots, sim.segs[0].light, sim.last_vigor])
+			n.append(sim.segs.size())
+		out += "| %s | %d | %d | %d | %.2f | %.2f | %.2f |\n" % [v, n[0], n[1], n[2], sim.health(), sim.roots, sim.segs[0].light]
 	return out
