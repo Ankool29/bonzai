@@ -166,6 +166,7 @@ func _open(i: int) -> void:
 	wood_mi.material_override = TreeMesh.bark_material(sim)
 	var lm := leaves_mi.material_override as ShaderMaterial
 	lm.set_shader_parameter("autumn_color", sim.autumn_color)
+	lm.set_shader_parameter("leaf_shape", sim.leaf_shape)
 	_clear_cut()
 	layout = sim.layout
 	for b in pine_btns:

@@ -10,7 +10,7 @@ const SIDES := 12
 var sides := SIDES  # faces des anneaux en cours : 6 pour les rameaux fins et les bourgeons
 static var all_roots := false  # rempotage (étape 23b) : toute la charpente racinaire, motte à nu
 static var root_sel := -1      # racine choisie pour la coupe (surlignée avec tout ce qui en part)
-const LEAF_PTS := 14                       # points du bord d'un côté de la feuille
+const LEAF_PTS := 8                        # points du bord d'un côté de la feuille (audit, phase 2 : 14 avant)
 const SELECTED := Color(0.95, 0.2, 0.12, 0.7)
 const WEAK := Color(0.8, 0.7, 0.35, 0.3)     # branche qui s'affaiblit à l'ombre
 const OLD := Color(1, 1, 1, 0)               # écorce seule (rameau de l'année et bois mort : dans le shader)
@@ -39,7 +39,14 @@ var lverts := PackedVector3Array()  # feuilles
 var lnorms := PackedVector3Array()
 var lcols := PackedColorArray()
 var wire_phase := {}  # angle de la spirale du fil au bout de chaque entre-nœud (continuité d'un entre-nœud à l'autre)
-var lanim := [Vector4.ZERO, Vector3.ZERO]  # dates et point d'attache de la feuille en cours
+var la0 := PackedFloat32Array([0, 0, 0, 0])  # dates de la feuille en cours (CUSTOM0)
+var la1 := PackedFloat32Array([0, 0, 0, 0])  # point d'attache de la feuille en cours (CUSTOM1)
+var luv := PackedVector2Array()   # feuilles : UV.x = 0 au centre du limbe, 1 au bord (contour tracé par le shader)
+var luv2 := PackedVector2Array()  # feuilles : position dans le plan de la feuille (nervures tracées par le shader)
+var lb0 := Vector3.ZERO           # repère de la feuille en cours : base du limbe, axe, côté, longueur
+var ldir := Vector3.FORWARD
+var lside := Vector3.RIGHT
+var ll := 1.0
 
 
 ## Renvoie [ArrayMesh du bois, ArrayMesh des feuilles, ArrayMesh des aiguilles] pour la période t_start..t_end
@@ -546,7 +553,8 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 
 		col *= Color(1.0, 0.9, 0.55)  # arbre épuisé : feuillage jaunissant
 	if selected:
 		col = Color(1.0, 0.35, 0.3)
-	lanim = [Vector4(b, s.grow_time if born < 0.0 else 2.0, fall, 0.0), s.end]
+	la0 = PackedFloat32Array([b, s.grow_time if born < 0.0 else 2.0, fall, 0.0])
+	la1 = PackedFloat32Array([s.end.x, s.end.y, s.end.z, 0.0])
 	# Feuille d'orme : pétiole de 3 mm au nœud qui se prolonge en nervure centrale (liseré sombre),
 	# limbe ovale le plus large sous le milieu, pointe aiguë, base oblique, bord finement denté, contour fin,
 	# 5 paires de nervures. Limbe presque horizontal dans le prolongement du bourgeon (alternes, deux rangs).
@@ -556,6 +564,10 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 
 	var l := sim.foliage_size * (0.6 + 0.4 * s.leaf_k) * s.size_k * scale  # plus petites à la base et sur une pousse faible
 	var wmax := l * 0.27
 	var b0 := s.end + dir * 0.003  # base du limbe, au bout du pétiole
+	lb0 = b0
+	ldir = dir
+	lside = side
+	ll = l
 	if not selected:
 		col *= sim.leaf_colors[0] if h < 0.5 else sim.leaf_colors[1]  # vert propre à l'espèce
 	var ink := Color(0.08, 0.14, 0.06)
@@ -573,23 +585,9 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 
 	for k in range(LEAF_PTS - 1, 0, -1):
 		cont.append(_leaf_pt(b0, dir, side, l, wmax, k, -0.85))
 	var c := b0 + dir * l * 0.42
-	for k in cont.size():
-		var p0 := cont[k]
-		var p1 := cont[(k + 1) % cont.size()]
-		_tri(c, p0, p1, nrm, col)
-		# contour fin : ruban sombre juste à l'extérieur du limbe
-		var o0 := p0 + (p0 - c).normalized() * 0.00035
-		var o1 := p1 + (p1 - c).normalized() * 0.00035
-		_tri(p0, o0, o1, nrm, ink)
-		_tri(p0, o1, p1, nrm, ink)
-	# pétiole + nervure centrale, puis nervures secondaires, légèrement décollés des deux faces
-	_line(s.end, b0 + dir * l * 0.95, 0.00025, nrm, ink)
-	for k in range(1, 6):
-		var x := k / 6.0 * 0.85
-		var x2 := x + 0.12
-		var m0 := b0 + dir * l * x
-		_line(m0, b0 + dir * l * x2 + side * _leaf_w(x2) * wmax * 0.85, 0.00012, nrm, vein)
-		_line(m0, b0 + dir * l * x2 - side * _leaf_w(x2) * wmax * 0.72, 0.00012, nrm, vein)
+	for k in cont.size():  # contour et nervures : tracés par le shader (audit, phase 2)
+		_tri(c, cont[k], cont[(k + 1) % cont.size()], nrm, col, Vector3(0, 1, 1))
+	_line(s.end, b0, 0.00025, nrm, ink)  # pétiole
 
 
 ## Feuille d'érable : long pétiole, limbe palmé de 5 ou 7 lobes lancéolés dentés, sinus profonds,
@@ -597,6 +595,8 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 
 func _palmate(node: Vector3, dir: Vector3, side: Vector3, nrm: Vector3, l: float, lobes: int, col: Color, ink: Color, vein: Color) -> void:
 	var r := l * 0.32                      # rayon du limbe
 	var b0 := node + dir * l * 0.36        # base du limbe, au bout du pétiole
+	lb0 = b0
+	col.a = lobes / 10.0  # le shader trace une nervure par lobe
 	var spread := deg_to_rad(105.0 if lobes == 7 else 95.0)  # angle du lobe le plus latéral
 	var gap := spread * 2.0 / (lobes - 1)  # angle entre deux lobes
 	var pt := func(ang: float, rad: float) -> Vector3: return b0 + (dir * cos(ang) + side * sin(ang)) * rad
@@ -607,35 +607,28 @@ func _palmate(node: Vector3, dir: Vector3, side: Vector3, nrm: Vector3, l: float
 		var a := -spread + gap * i
 		var len_i := r * (1.0 - 0.35 * absf(a) / spread)  # lobes latéraux plus courts
 		# bord gauche de la base vers la pointe, puis bord droit vers le sinus suivant ; dents une fois sur deux
-		for k in 7:
-			var t := k / 6.0
+		for k in 4:
+			var t := k / 3.0
 			cont.append(pt.call(a - _lobe_w(t) * gap, lerpf(r * 0.3, len_i, t) * (1.0 + 0.05 * (k % 2))))
 		tips.append(pt.call(a, len_i))
-		for k in range(5, -1, -1):
-			var t := k / 6.0
+		for k in range(2, -1, -1):
+			var t := k / 3.0
 			cont.append(pt.call(a + _lobe_w(t) * gap, lerpf(r * 0.3, len_i, t) * (1.0 + 0.05 * (k % 2))))
 		if i < lobes - 1:
 			cont.append(pt.call(a + gap * 0.5, r * 0.25))  # fond du sinus
 	cont.append(pt.call(spread + gap * 0.5, r * 0.12))
 	for k in cont.size():
-		var p0 := cont[k]
-		var p1 := cont[(k + 1) % cont.size()]
-		_tri(b0, p0, p1, nrm, col)
-		var o0 := p0 + (p0 - b0).normalized() * 0.00035
-		var o1 := p1 + (p1 - b0).normalized() * 0.00035
-		_tri(p0, o0, o1, nrm, ink)
-		_tri(p0, o1, p1, nrm, ink)
-	_line(node, b0, 0.0003, nrm, ink)
-	for t in tips:
-		_line(b0, b0 + (t - b0) * 0.9, 0.00012, nrm, vein)
+		_tri(b0, cont[k], cont[(k + 1) % cont.size()], nrm, col, Vector3(0, 1, 1))
+	_line(node, b0, 0.0003, nrm, ink)  # pétiole
 
 
 ## Feuille de ginkgo : long pétiole, limbe en éventail à base en coin, bord ondulé ; échancrure au milieu
-## sur les pousses longues (feuille bilobée). Nervures en éventail. Vérifiée au dessin : check/fan.py.
+## sur les pousses longues (feuille bilobée). Nervures en éventail tracées par le shader. Dessin : check/fan.py.
 func _fan(node: Vector3, dir: Vector3, side: Vector3, nrm: Vector3, l: float, notch: bool, col: Color, ink: Color, vein: Color) -> void:
 	var a_max := deg_to_rad(68.0)
 	var r := l * 0.6
 	var b0 := node + dir * l * 0.4  # base du limbe, au bout du pétiole
+	lb0 = b0
 	var cont: Array[Vector3] = []
 	for k in 17:
 		var a := -a_max + 2.0 * a_max * k / 16.0
@@ -644,20 +637,8 @@ func _fan(node: Vector3, dir: Vector3, side: Vector3, nrm: Vector3, l: float, no
 			rr *= 1.0 - 0.42 * exp(-pow(a / 0.13, 2.0))
 		cont.append(b0 + (dir * cos(a) + side * sin(a)) * rr)
 	for k in 16:
-		_tri(b0, cont[k], cont[k + 1], nrm, col)
-	cont.push_front(b0)
-	cont.append(b0)
-	for k in cont.size() - 1:  # contour fin
-		var p0 := cont[k]
-		var p1 := cont[k + 1]
-		var o0 := p0 + (p0 - b0).normalized() * 0.00035 if p0 != b0 else p0
-		var o1 := p1 + (p1 - b0).normalized() * 0.00035 if p1 != b0 else p1
-		_tri(p0, o0, o1, nrm, ink)
-		_tri(p0, o1, p1, nrm, ink)
-	_line(node, b0, 0.0003, nrm, ink)
-	for a in [-50.0, -30.0, -10.0, 10.0, 30.0, 50.0]:
-		var t := deg_to_rad(a)
-		_line(b0, b0 + (dir * cos(t) + side * sin(t)) * r * 0.8, 0.0001, nrm, vein)
+		_tri(b0, cont[k], cont[k + 1], nrm, col, Vector3(0, 1, 1))
+	_line(node, b0, 0.0003, nrm, ink)  # pétiole
 
 
 ## Demi-largeur angulaire d'un lobe d'érable (en fraction de l'écart entre lobes) : plus large au milieu, pointe aiguë.
@@ -688,15 +669,22 @@ func _line(a: Vector3, b: Vector3, half_w: float, nrm: Vector3, col: Color) -> v
 		_tri(a - w + o, b + w + o, a + w + o, nrm, col)
 
 
-func _tri(p0: Vector3, p1: Vector3, p2: Vector3, nrm: Vector3, col: Color) -> void:
-	var a0: Vector4 = lanim[0]
-	var at: Vector3 = lanim[1]
-	for q in [p0, p1, p2]:
-		lverts.append(q)
-		lnorms.append(nrm)
-		lcols.append(col)
-		lc0.append_array([a0.x, a0.y, a0.z, a0.w])
-		lc1.append_array([at.x, at.y, at.z, 0.0])
+func _tri(p0: Vector3, p1: Vector3, p2: Vector3, nrm: Vector3, col: Color, e := Vector3.ZERO) -> void:
+	_lv(p0, nrm, col, e.x)
+	_lv(p1, nrm, col, e.y)
+	_lv(p2, nrm, col, e.z)
+
+
+## Un sommet de feuille. e : 0 au centre du limbe, 1 au bord.
+func _lv(p: Vector3, nrm: Vector3, col: Color, e: float) -> void:
+	lverts.append(p)
+	lnorms.append(nrm)
+	lcols.append(col)
+	lc0.append_array(la0)
+	lc1.append_array(la1)
+	luv.append(Vector2(e, 0.0))
+	var d := p - lb0
+	luv2.append(Vector2(d.dot(ldir), d.dot(lside)) / ll)
 
 
 ## Aiguilles de pin par paires le long de la pousse : chacune = deux triangles fins croisés,
@@ -757,6 +745,8 @@ func _leaf_mesh() -> ArrayMesh:
 	arr[Mesh.ARRAY_VERTEX] = lverts
 	arr[Mesh.ARRAY_NORMAL] = lnorms
 	arr[Mesh.ARRAY_COLOR] = lcols
+	arr[Mesh.ARRAY_TEX_UV] = luv
+	arr[Mesh.ARRAY_TEX_UV2] = luv2
 	var flags := _custom(arr, [lc0, lc1])
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr, [], {}, flags)
 	return mesh
