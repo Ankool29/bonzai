@@ -26,6 +26,8 @@ var wood_mi := MeshInstance3D.new()
 var leaves_mi := MeshInstance3D.new()
 var needles_mi := MeshInstance3D.new()
 var cam := Camera3D.new()
+var ink_mi := MeshInstance3D.new()  # style « encre et papier » (étape 26), passe plein écran
+const SETTINGS := "user://reglages.cfg"
 var world := Node3D.new()
 var yaw := 0.6
 var pitch := 0.25
@@ -99,6 +101,19 @@ func _ready() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color(0.62, 0.66, 0.85)  # ombres bleutées
 	env.ambient_light_energy = 0.55
+	# style « encre et papier » : un quad collé à l'écran qui retraite l'image de la scène
+	var q := QuadMesh.new()
+	q.size = Vector2(2, 2)
+	ink_mi.mesh = q
+	var im := ShaderMaterial.new()
+	im.shader = preload("res://shaders/ink.gdshader")
+	ink_mi.material_override = im
+	ink_mi.extra_cull_margin = 16384.0  # jamais écarté par la caméra
+	ink_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	cam.add_child(ink_mi)
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS)
+	ink_mi.visible = cfg.get_value("rendu", "encre", false)
 	var we := WorldEnvironment.new()
 	we.environment = env
 	world.add_child(we)
@@ -302,6 +317,7 @@ func _build_ui() -> void:
 	_button(pages[3], "Rempoter", _enter_roots, "rempoter")
 	_button(pages[3], "Recentrer", _recenter, "recentrer")
 	_button(pages[3], "Retirer", _remove, "retirer")
+	_button(pages[3], "Rendu", _toggle_ink, "pinceau")
 	_tab(0)
 	root_bar = PanelContainer.new()  # rempotage : remplace les onglets
 	root.add_child(root_bar)
@@ -435,6 +451,15 @@ func _show_repot() -> void:
 	bottom.custom_minimum_size.y = 40 * ui_scale
 	box.add_child(bottom)
 	garden_panel.visible = true
+
+
+## Passe du cel shading au style encre et papier, et retour ; le choix est gardé.
+func _toggle_ink() -> void:
+	ink_mi.visible = not ink_mi.visible
+	var cfg := ConfigFile.new()
+	cfg.load(SETTINGS)
+	cfg.set_value("rendu", "encre", ink_mi.visible)
+	cfg.save(SETTINGS)
 
 
 ## Jardin d'exposition : tous les arbres à leur place, ombres actives ; seul l'arbre retravaillé est redessiné.
