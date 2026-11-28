@@ -41,22 +41,23 @@ func _init() -> void:
 ## Étape 28 : orme sur 5 ans, libre, pincé chaque printemps, effeuillé chaque été (à partir de la 2e année).
 ## Mesuré en été de la 5e année, sur les pousses de l'année.
 func _techniques() -> String:
-	var out := "\n| conduite (orme, 5 ans) | entre-nœuds | pointes | entre-nœud moyen (mm) | pousses : moyen / 9e décile (mm) | taille des feuilles | santé fin d'été / juin |\n|---|---|---|---|---|---|---|\n"
-	for mode in ["libre", "pincé", "effeuillé"]:
+	var out := "\n| conduite (orme) | entre-nœuds | pointes | entre-nœud moyen (mm) | pousses : moyen / 9e décile (mm) | taille des feuilles | santé fin d'été / juin |\n|---|---|---|---|---|---|---|\n"
+	for mode in ["libre", "pincé", "effeuillé", "libre (3 ans)", "pincé (3 ans)"]:
 		var june := 0.0
 		var sim := TreeSim.new()
 		sim.reset(1, Species.ELM)
-		for y in 5:
+		var AGE := 3 if mode.ends_with("(3 ans)") else 5
+		for y in AGE:
 			for w in 52:
 				sim.step_week()
 				var wk := sim.week % 52
-				if mode == "pincé" and y >= 1 and wk >= 16 and wk <= 20:
+				if mode.begins_with("pincé") and y >= 1 and wk >= 16 and wk <= 20:
 					_pinch_all(sim)
 				if mode == "effeuillé" and y >= 1 and wk == 24:
 					sim.defoliate()
-				if y == 4 and wk == 23:
+				if y == AGE - 1 and wk == 23:
 					june = sim.vigor_now()
-				if y == 4 and wk == 37:  # après le remplissage des réserves de fin d'été
+				if y == AGE - 1 and wk == 37:  # après le remplissage des réserves de fin d'été
 					out += _stats(sim, mode, june)
 	return out
 
