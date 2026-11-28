@@ -217,13 +217,13 @@ const JUNIPER := {
 	# couper aux ciseaux, ne pas pincer, pas plus de 30 % du feuillage. Écorce brun-rouge en lanières (NC State).
 	"bark_colors": [Color(0.5, 0.4, 0.34), Color(0.44, 0.33, 0.27), Color(0.62, 0.33, 0.2), Color(0.24, 0.16, 0.12)],
 	"foliage_size": 0.008,  # cordons d'écailles
-	"internode": 0.006,
+	"internode": 0.008,
 	"alpha": 1.4,
 	"apical": 0.55,
 	"max_per_flush": 4,
 	"preformed": 2,
 	"spur_len": 0.6,
-	"leaf_area": 0.7,
+	"leaf_area": 0.3,       # écailles minuscules : peu d'ombre par bourgeon (à 0,7 l'arbre s'étouffait, banc)
 	"sympodial": false,
 	"branch_angle": deg_to_rad(45.0),
 	"phyllotaxy": deg_to_rad(90.0),  # paires croisées
@@ -241,7 +241,7 @@ const JUNIPER := {
 	"root_dip": 8.0,
 	"root_branch": 0.4,
 	"root_mix": 0.3,
-	"flushes": {14: 1.0, 19: 0.6, 24: 0.5, 30: 0.4, 36: 0.3},  # pousse continue toute la saison
+	"flushes": {14: 1.0, 19: 0.6, 24: 0.5, 30: 0.4},  # pousse continue jusqu'au bilan de fin d'été
 	"leaf_shape": 3,
 	"young_color": Color(0.36, 0.5, 0.24),
 	"autumn_color": Color(0.82, 0.6, 0.2),

@@ -36,7 +36,6 @@ func _init() -> void:
 	out += _racines()
 	out += _pause()
 	out += _genevrier()
-	out += _diag_genevrier()
 	print("=== BANC ===")
 	print(out)
 	quit()
@@ -220,24 +219,3 @@ func _genevrier() -> String:
 		print(lines)
 	return out
 
-
-## Diagnostic temporaire (étape 31) : réglage du genévrier (ombre des bourgeons serrés).
-func _diag_genevrier() -> String:
-	var out := "\n| diag genévrier | an2 seg | an4 seg | an6 seg | hauteur an6 (cm) | santé an6 | ms/an |\n|---|---|---|---|---|---|---|\n"
-	var fl := {14: 1.0, 19: 0.6, 24: 0.5, 30: 0.4}
-	for v in ["surface 0,3", "surface 0,2", "surface 0,3 + 8 mm", "surface 0,15 + 8 mm", "orme (réf.)"]:
-		var sim := TreeSim.new()
-		sim.reset(1, Species.JUNIPER if v != "orme (réf.)" else Species.ELM)
-		if v != "orme (réf.)":
-			sim.flushes = fl
-			sim.leaf_area = 0.3 if v.begins_with("surface 0,3") else (0.2 if v == "surface 0,2" else 0.15)
-			if v.ends_with("8 mm"):
-				sim.internode = 0.008
-		var n := []
-		var t0 := Time.get_ticks_msec()
-		for y in 6:
-			for w in 52:
-				sim.step_week()
-			n.append(sim.segs.size())
-		out += "| %s | %d | %d | %d | %d | %.2f | %d |\n" % [v, n[1], n[3], n[5], roundi(sim.height() * 100.0), sim.health(), (Time.get_ticks_msec() - t0) / 6]
-	return out
