@@ -37,3 +37,17 @@ Validé par le joueur le 28/11/2026.
 - Le pincement freine les pousses fortes sans emballer la croissance ; il ne raccourcit pas encore la moyenne des
   entre-nœuds de l'année (à suivre à l'usage).
 - L'effeuillage double la ramification, réduit les feuilles et affaiblit l'arbre, comme en vrai.
+
+## Correction du pincement (28/11/2026)
+- Le pincement passait par la coupe ordinaire : les 2 nœuds restants gardaient un bonus de vigueur jusqu'à la fin
+  de l'année, captaient la vigueur des poussées d'été et refaisaient de longues pousses. Désormais ils sont seulement
+  « réveillés » pour la poussée provoquée (`kick`), sans bonus ensuite. Même chose pour l'effeuillage.
+- Pousses : entre-nœuds courts à la base, longs au milieu, courts au bout (profil 0,45 + 0,75 sin) : pincer tôt garde
+  les courts.
+- Longueur des entre-nœuds bien plus sensible à la vigueur (0,3 + 0,25 v, de 0,4 à 1,6 ; avant 0,6 + 0,15 v avec un
+  plancher à 0,7 que presque toutes les pousses d'un bonsaï atteignaient).
+- Effeuillage : coût plafonné à ce que fournissent les racines (l'arbre effeuillé chaque année finissait épuisé).
+
+Banc (orme, été) : pincé = 74 % de pointes en plus, plus longue pousse 5 entre-nœuds au lieu de 7, entre-nœuds
+5,6 mm contre 5,8. Un orme en pot de 8 L ne fait que des pousses faibles (3 entre-nœuds en moyenne, 90 % des
+entre-nœuds sous 7 mm) : il n'y a presque rien de long à raccourcir.
