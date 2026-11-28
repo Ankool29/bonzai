@@ -90,7 +90,7 @@ func _stats(sim: TreeSim, mode: String, june: float) -> String:
 			len_sum += (s.end - s.start).length()
 			leaf_sum += s.size_k
 			n += 1
-			if (s.main_child >= 0 and sim.segs[s.main_child].born == s.born) or (s.parent >= 0 and sim.segs[s.parent].born == s.born):
+			if s.grow_time < TreeSim.GROW_WEEKS * 0.75:  # pousse d'au moins 2 entre-nœuds
 				shoot.append((s.end - s.start).length())
 	shoot.sort()
 	var mean := 0.0
