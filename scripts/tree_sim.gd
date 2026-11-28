@@ -95,6 +95,7 @@ var flush_now := 1.0          # force de la poussée en cours (< 1 : poussée d'
 var extra_flush := -1         # semaine de la poussée provoquée (mekiri, pincement, effeuillage)
 var extra_defol := false      # la poussée provoquée suit un effeuillage : « mini-printemps », feuilles plus petites
 var extra_local := false      # poussée provoquée par un pincement ou un effeuillage : seuls les bourgeons libérés partent
+var debt := 0.0               # coût des gestes faits quand les réserves sont vides (été) : retenu sur le remplissage de fin d'été
 const DEFOL_REGROW := 4       # semaines sans feuilles après un effeuillage
 const GROW_WEEKS := 3.0       # durée d'allongement d'une pousse (écart entre deux poussées)
 const DIEBACK_WEEK := 35      # fin d'été : bilan de lumière des branches
@@ -413,6 +414,19 @@ func health() -> float:
 	return reserve / maxf(roots, 0.001)
 
 
+## Coût d'un geste en réserves ; ce qui manque devient une dette, retenue à la fin de l'été (en été les
+## réserves sont vides : sans cela, tailler ou effeuiller en pleine saison ne coûtait rien).
+func _spend(cost: float) -> void:
+	if cost < 0.0:  # remboursement (pincement) : d'abord la dette
+		var back := minf(debt, -cost)
+		debt -= back
+		reserve += -cost - back
+		return
+	var take := minf(reserve, cost)
+	reserve -= take
+	debt += cost - take
+
+
 ## Forme du moment (étape 28) : réserves plus ce que capte le feuillage, rapportés aux racines. En été les
 ## réserves sont basses (les poussées les ont dépensées) même sur un arbre vigoureux : c'est la forme qui
 ## dit si un mekiri ou un effeuillage est supportable.
@@ -453,7 +467,7 @@ func pinch(i: int) -> String:
 	var lost := s.light
 	var j := s.parent
 	prune(i)
-	reserve += 0.4 * lost  # le coupe ordinaire retire 0,5 ; la pousse tendre ne coûte que 0,1
+	_spend(-0.4 * lost)  # la coupe ordinaire coûte 0,5 ; la pousse tendre seulement 0,1
 	for k in 2:
 		if j < 0:
 			break
@@ -502,7 +516,7 @@ func defoliate(only := PackedInt32Array()) -> String:
 				segs[k].dry_week = week
 	if n == 0:
 		return "Rien à effeuiller ici."
-	reserve = maxf(0.0, reserve - 0.4 * lost)
+	_spend(0.4 * lost)
 	extra_flush = week + DEFOL_REGROW - 1 + rng.randi() % 2
 	extra_defol = true
 	extra_local = true
@@ -597,7 +611,7 @@ func prune(i: int, concave := false) -> bool:
 		return false
 	var j := segs[i].parent
 	var cut := segs[i]
-	reserve = maxf(0.0, reserve - 0.5 * cut.light)  # l'énergie investie dans le feuillage coupé est perdue
+	_spend(0.5 * cut.light)  # l'énergie investie dans le feuillage coupé est perdue
 	var y0 := floorf(week / 52.0) * 52.0
 	# Pin : chandelle de l'année coupée à sa base = mekiri. Couronne de 0 à 4 entre-nœuds (n + 1 bourgeons)
 	# selon la vigueur de la chandelle retirée ; elle part 2 à 4 semaines plus tard si on coupe de fin mai
@@ -781,7 +795,8 @@ func _dieback() -> void:
 	# Fin d'été : les feuilles ont rempli les réserves ; les racines suivent la couronne (rapport racines /
 	# couronne constant), sans dépasser le pot, et meurent à moitié de l'excès quand la couronne a été réduite.
 	var l := segs[0].light
-	reserve = minf(reserve + l, 1.5 * roots)
+	reserve = clampf(reserve + l - debt, 0.0, 1.5 * roots)
+	debt = 0.0
 	var t := minf(l, pot_volume * ROOTS_PER_LITRE)
 	roots = minf(t, roots * 2.0 + 5.0) if t > roots else roots + (t - roots) * 0.5
 	for i in range(1, segs.size()):
@@ -878,8 +893,8 @@ func _grow() -> void:
 				s.v_term = 0.0
 				s.v_lat = 0.0
 				continue
-			s.v_term = maxf(s.v_term, 0.6 + rng.randf() * 0.8)
-			s.v_lat = maxf(s.v_lat, 0.6 + rng.randf() * 0.8)
+			s.v_term = 0.5 + rng.randf() * 0.7  # réponse courte : rameau court ou 1 à 2 entre-nœuds
+			s.v_lat = 0.5 + rng.randf() * 0.7
 		if s.term_bud and (s.v_term >= 1.0 if summer else s.v_term + rng.randf() >= 1.0):
 			var d := s.end - s.start
 			if s.relay:  # repart du bourgeon latéral : l'axe fait un coude
