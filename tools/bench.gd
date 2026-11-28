@@ -41,8 +41,9 @@ func _init() -> void:
 ## Étape 28 : orme sur 5 ans, libre, pincé chaque printemps, effeuillé chaque été (à partir de la 2e année).
 ## Mesuré en été de la 5e année, sur les pousses de l'année.
 func _techniques() -> String:
-	var out := "\n| conduite (orme, 5 ans) | entre-nœuds | pointes | entre-nœud moyen (mm) | taille des feuilles | santé |\n|---|---|---|---|---|---|\n"
+	var out := "\n| conduite (orme, 5 ans) | entre-nœuds | pointes | entre-nœud moyen (mm) | pousses : moyen / 9e décile (mm) | taille des feuilles | santé fin d'été / juin |\n|---|---|---|---|---|---|---|\n"
 	for mode in ["libre", "pincé", "effeuillé"]:
+		var june := 0.0
 		var sim := TreeSim.new()
 		sim.reset(1, Species.ELM)
 		for y in 5:
@@ -53,8 +54,10 @@ func _techniques() -> String:
 					_pinch_all(sim)
 				if mode == "effeuillé" and y >= 1 and wk == 24:
 					sim.defoliate()
+				if y == 4 and wk == 23:
+					june = sim.vigor_now()
 				if y == 4 and wk == 37:  # après le remplissage des réserves de fin d'été
-					out += _stats(sim, mode)
+					out += _stats(sim, mode, june)
 	return out
 
 
@@ -71,12 +74,13 @@ func _pinch_all(sim: TreeSim) -> void:
 				sim.pinch(m)
 
 
-func _stats(sim: TreeSim, mode: String) -> String:
+func _stats(sim: TreeSim, mode: String, june: float) -> String:
 	var y0 := floorf(sim.week / 52.0) * 52.0
 	var tips := 0
 	var len_sum := 0.0
 	var leaf_sum := 0.0
 	var n := 0
+	var shoot := PackedFloat32Array()  # entre-nœuds des vraies pousses (pas des rameaux courts)
 	for s in sim.segs:
 		if s.dry:
 			continue
@@ -86,4 +90,13 @@ func _stats(sim: TreeSim, mode: String) -> String:
 			len_sum += (s.end - s.start).length()
 			leaf_sum += s.size_k
 			n += 1
-	return "| %s | %d | %d | %.1f | %.2f | %.2f |\n" % [mode, sim.segs.size(), tips, 1000.0 * len_sum / maxi(n, 1), leaf_sum / maxi(n, 1), sim.health()]
+			if (s.main_child >= 0 and sim.segs[s.main_child].born == s.born) or (s.parent >= 0 and sim.segs[s.parent].born == s.born):
+				shoot.append((s.end - s.start).length())
+	shoot.sort()
+	var mean := 0.0
+	for x in shoot:
+		mean += x
+	mean /= maxi(shoot.size(), 1)
+	var p90 := shoot[int(shoot.size() * 0.9)] if shoot.size() > 0 else 0.0
+	return "| %s | %d | %d | %.1f | %.1f / %.1f | %.2f | %.2f / %.2f |\n" % [mode, sim.segs.size(), tips, 1000.0 * len_sum / maxi(n, 1),
+			1000.0 * mean, 1000.0 * p90, leaf_sum / maxi(n, 1), sim.health(), june]

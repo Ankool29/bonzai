@@ -950,7 +950,8 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 		s.start = p
 		s.leaf_k = float(k + 1) / n
 		s.size_k = clampf(0.6 + 0.25 * v, 0.6, 1.3) * leaf_f  # pousse faible, soleil, été : petites feuilles
-		var profile := 1.0 if spur else 0.85 + 0.35 * sin(PI * (k + 0.5) / n)
+		# entre-nœuds courts à la base de la pousse, longs au milieu, courts au bout : pincer tôt garde les courts
+		var profile := 1.0 if spur else 0.45 + 0.75 * sin(PI * (k + 0.5) / n)
 		if opposite and not spur:
 			profile = 0.35 if k == 0 else 0.8 + 0.5 * float(k) / n  # première paire serrée, puis de plus en plus long
 		s.end = p + d * internode * len_v * profile * rng.randf_range(0.8, 1.2)
