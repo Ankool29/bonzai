@@ -28,9 +28,16 @@ var depth := 0.048
 var sp := {}               # réglages de l'espèce : n, tap, dip, branch, mix
 var rng := RandomNumberGenerator.new()  # hasard propre : la pousse des branches ne change pas
 var tile := false
-var soil_y := 0.0          # niveau de la terre (étape 29a) : < 0 terre baissée (racines à nu), > 0 butte
+var soil_y := 0.0          # niveau de la terre (étape 29a) : sous le bord du pot = racines à nu, au-dessus = butte
 const SOIL_MIN := -0.03
 const SOIL_MAX := 0.04
+# Pierre (étape 29b) : posée sous le collet ; le pot est abaissé d'autant (bord à rim_y).
+var rock := false
+var rock_c := Vector3.ZERO     # centre
+var rock_r := Vector3.ONE      # demi-axes
+var rock_s := Vector3.ZERO     # phases du relief (forme propre à chaque pierre)
+var rim_y := 0.0               # hauteur du bord du pot (0 sans pierre)
+const ROCKS := [Vector3(0.035, 0.03, 0.03), Vector3(0.05, 0.045, 0.04), Vector3(0.04, 0.07, 0.035)]  # petite, moyenne, haute
 
 
 func setup(species: Dictionary, volume: float) -> void:
@@ -87,17 +94,76 @@ func _free(p: Vector3) -> float:
 
 
 func _inside(p: Vector3, m := 0.004) -> bool:
-	return absf(p.x) < hx - m and absf(p.z) < hz - m and p.y > -depth + m and in_soil(p) and not _under_tile(p)
+	return absf(p.x) < hx - m and absf(p.z) < hz - m and p.y > rim_y - depth + m and in_soil(p) and not _under_tile(p)
 
 
-## Sous la terre : dans le pot sous le niveau de la terre, ou dans la butte (plus étroite vers le haut).
+## Sous la terre : dans le pot sous le niveau de la terre, ou dans la butte (plus étroite vers le haut) ;
+## jamais dans la pierre.
 func in_soil(p: Vector3) -> bool:
-	if p.y >= soil_y:
+	if p.y >= soil_y or (rock and rock_dist(p) < 0.0):
 		return false
-	if p.y <= 0.0:
+	if p.y <= rim_y:
 		return true
-	var f := 1.0 - 0.65 * p.y / soil_y
+	var f := 1.0 - 0.65 * (p.y - rim_y) / (soil_y - rim_y)
 	return absf(p.x) < hx * f and absf(p.z) < hz * f
+
+
+## Rayon de la pierre dans la direction u (unitaire) : ellipsoïde bosselé, même forme pour la simulation et le dessin.
+func rock_radius(u: Vector3) -> float:
+	var e := 1.0 / sqrt(pow(u.x / rock_r.x, 2.0) + pow(u.y / rock_r.y, 2.0) + pow(u.z / rock_r.z, 2.0))
+	var n := sin(3.0 * u.x + rock_s.x) * sin(2.5 * u.y + rock_s.y) * sin(3.5 * u.z + rock_s.z) + 0.5 * sin(7.0 * u.x + 5.0 * u.z + rock_s.y)
+	return e * (1.0 + 0.12 * n)
+
+
+## Distance (approchée) à la surface de la pierre : < 0 dedans.
+func rock_dist(p: Vector3) -> float:
+	var q := p - rock_c
+	var l := q.length()
+	return l - rock_radius(q / l) if l > 0.000001 else -1.0
+
+
+func rock_normal(p: Vector3) -> Vector3:
+	var e := 0.001
+	return Vector3(rock_dist(p + Vector3(e, 0, 0)) - rock_dist(p - Vector3(e, 0, 0)),
+			rock_dist(p + Vector3(0, e, 0)) - rock_dist(p - Vector3(0, e, 0)),
+			rock_dist(p + Vector3(0, 0, e)) - rock_dist(p - Vector3(0, 0, e))).normalized()
+
+
+## Pose l'arbre sur une pierre (0 petite, 1 moyenne, 2 haute) : la pierre touche le collet, le pot s'abaisse pour
+## l'enterrer aux deux tiers, la terre monte en butte jusqu'au collet (racines protégées, comme en vrai). Les racines
+## à plus de 3 cm du collet sont coupées, les autres plaquées sur la pierre. Renvoie la part de racines coupées.
+func place_rock(kind: int) -> float:
+	rock = true
+	rock_r = ROCKS[kind]
+	rock_s = Vector3(rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU)
+	rock_c = Vector3(0, -0.004, 0)
+	rock_c.y -= rock_radius(Vector3.UP)
+	var bottom := rock_c.y - rock_radius(Vector3.DOWN)
+	rim_y = bottom + depth * 0.7
+	soil_y = 0.0
+	var n := p0.size()
+	var dead := {}
+	for i in n:
+		if dead.has(par[i]) or p1[i].length() > 0.03:
+			dead[i] = true
+	if not dead.is_empty():
+		_remove(dead)
+	for i in p0.size():  # plaquées sur la pierre
+		p0[i] = _hug(p0[i])
+		p1[i] = _hug(p1[i])
+		dir[i] = (p1[i] - p0[i]).normalized() if p1[i] != p0[i] else Vector3.DOWN
+	_rebuild_occ()
+	return float(n - p0.size()) / maxf(n, 1.0)
+
+
+## Point ramené à fleur de pierre (s'il est dedans ou tout près).
+func _hug(p: Vector3) -> Vector3:
+	for k in 3:
+		var d := rock_dist(p)
+		if d > 0.003:
+			break
+		p += rock_normal(p) * (0.0015 - d)
+	return p
 
 
 func _under_tile(p: Vector3) -> bool:
@@ -110,9 +176,16 @@ func _steer(i: int) -> Vector3:
 	var h := Vector3(d.x, 0, d.z)
 	h = h.normalized() if h.length() > 0.000001 else Vector3.RIGHT
 	var want := Vector3.DOWN
+	if rock and p1[i].y > rim_y - 0.01 and rock_dist(p1[i]) < 0.015:
+		# sur la pierre : la racine descend en suivant sa surface, plaquée contre elle
+		var nr := rock_normal(p1[i])
+		var down := (Vector3.DOWN - nr * Vector3.DOWN.dot(nr)).normalized()
+		want = (down - nr * clampf((rock_dist(p1[i]) - 0.0015) / 0.004, -1.0, 1.0)).normalized()
+		var jr := Vector3(rng.randf_range(-1, 1), rng.randf_range(-1, 1), rng.randf_range(-1, 1)) * 0.15
+		return _wall(p1[i], d * 0.4 + want * 0.6 + jr)
 	if not (sp["tap"] and i == 0):
 		var far := minf(1.0, Vector2(p1[i].x, p1[i].z).length() / 0.05)
-		var zd: float = minf(soil_y, 0.0) - 0.002 - (sp["dip"] + 8.0 * order[i]) * 0.001 * far
+		var zd: float = minf(soil_y, rim_y) - 0.002 - (sp["dip"] + 8.0 * order[i]) * 0.001 * far
 		want = (h + Vector3(0, (zd - p1[i].y) / 0.01, 0)).normalized()
 	var j := Vector3(rng.randf_range(-1, 1), rng.randf_range(-0.3, 0.3), rng.randf_range(-1, 1)) * 0.25
 	return _wall(p1[i], d * 0.7 + want * 0.3 + j)
@@ -127,11 +200,15 @@ func _wall(p: Vector3, d: Vector3) -> Vector3:
 			d.x = 0.0
 		if absf(nx.z) >= hz - 0.004 and d.z * nx.z > 0.0:
 			d.z = 0.0
-		if nx.y <= -depth + 0.004 and d.y < 0.0:
+		if nx.y <= rim_y - depth + 0.004 and d.y < 0.0:
 			d.y = 0.0
 		if (nx.y >= soil_y - 0.002 and d.y > 0.0) or (_under_tile(nx) and d.y < 0.0):
 			d.y = 0.0
 		d = d.normalized() if d.length() > 0.000001 else Vector3(-p.z, 0, p.x).normalized()
+	if rock and rock_dist(p + d * RI) < 0.0005:  # contre la pierre : la pointe glisse sur sa surface
+		var nr := rock_normal(p + d * RI)
+		d = d - nr * minf(d.dot(nr), 0.0)
+		d = d.normalized() if d.length() > 0.000001 else Vector3.DOWN
 	return d
 
 
@@ -224,7 +301,7 @@ func sector(p: Vector3) -> int:
 
 ## Monte (+) ou baisse (-) la terre ; renvoie le nouveau niveau.
 func set_soil(y: float) -> float:
-	soil_y = clampf(y, maxf(SOIL_MIN, -depth * 0.6), SOIL_MAX)
+	soil_y = clampf(y, rim_y + maxf(SOIL_MIN, -depth * 0.6), maxf(rim_y + SOIL_MAX, 0.0))
 	return soil_y
 
 
@@ -252,7 +329,7 @@ func fit_pot() -> void:
 	var dead := {}
 	for i in p0.size():
 		var q := p1[i]
-		if dead.has(par[i]) or absf(q.x) > hx or absf(q.z) > hz or q.y < -depth:
+		if dead.has(par[i]) or absf(q.x) > hx or absf(q.z) > hz or q.y < rim_y - depth:
 			dead[i] = true
 	if not dead.is_empty():
 		_remove(dead)
@@ -303,7 +380,8 @@ func _rebuild_occ() -> void:
 
 func to_data() -> Dictionary:
 	return {"p0": p0, "p1": p1, "dir": dir, "par": par, "rad": rad, "tip": tip, "order": order,
-			"seed": rng.seed, "state": rng.state, "tile": tile, "soil_y": soil_y}
+			"seed": rng.seed, "state": rng.state, "tile": tile, "soil_y": soil_y,
+			"rock": rock, "rock_c": rock_c, "rock_r": rock_r, "rock_s": rock_s, "rim_y": rim_y}
 
 
 func from_data(d: Dictionary) -> void:
@@ -318,4 +396,9 @@ func from_data(d: Dictionary) -> void:
 	rng.state = d["state"]
 	tile = d.get("tile", false)
 	soil_y = d.get("soil_y", 0.0)
+	rock = d.get("rock", false)
+	rock_c = d.get("rock_c", Vector3.ZERO)
+	rock_r = d.get("rock_r", Vector3.ONE)
+	rock_s = d.get("rock_s", Vector3.ZERO)
+	rim_y = d.get("rim_y", 0.0)
 	_rebuild_occ()

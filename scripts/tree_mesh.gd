@@ -70,6 +70,31 @@ static func build_only(s: TreeSim, highlight: PackedInt32Array, leaves: bool) ->
 	return m._build(highlight, leaves)
 
 
+## Pierre de l'étape 29b : sphère déformée par la même forme que la simulation (RootSim.rock_radius).
+static func rock_mesh(rs: RootSim) -> ArrayMesh:
+	var sph := SphereMesh.new()
+	sph.radial_segments = 32
+	sph.rings = 20
+	var a := sph.get_mesh_arrays()
+	var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+	for i in v.size():
+		var u := v[i].normalized()
+		v[i] = rs.rock_c + u * rs.rock_radius(u)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var idx: PackedInt32Array = a[Mesh.ARRAY_INDEX]
+	for k in idx:
+		st.add_vertex(v[k])
+	st.generate_normals()
+	return st.commit()
+
+
+static func rock_material() -> ShaderMaterial:
+	var m := toon(0, Color(0.55, 0.53, 0.5), true)
+	m.next_pass.set_shader_parameter("width", 0.0015)
+	return m
+
+
 ## Nombre de sommets d'un dessin (mesure).
 static func vertex_count(m: Array) -> int:
 	var n := 0
