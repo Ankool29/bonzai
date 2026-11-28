@@ -516,7 +516,7 @@ func defoliate(only := PackedInt32Array()) -> String:
 				segs[k].dry_week = week
 	if n == 0:
 		return "Rien à effeuiller ici."
-	_spend(0.4 * lost)
+	_spend(0.7 * lost)  # semaines sans photosynthèse et nouvelles feuilles à fabriquer
 	extra_flush = week + DEFOL_REGROW - 1 + rng.randi() % 2
 	extra_defol = true
 	extra_local = true
