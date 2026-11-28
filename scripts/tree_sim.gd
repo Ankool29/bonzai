@@ -94,6 +94,7 @@ var flushes := {15: 1.0, 18: 1.0, 21: 0.8, 27: 0.5}
 var flush_now := 1.0          # force de la poussée en cours (< 1 : poussée d'été)
 var extra_flush := -1         # semaine de la poussée provoquée (mekiri, pincement, effeuillage)
 var extra_defol := false      # la poussée provoquée suit un effeuillage : « mini-printemps », feuilles plus petites
+var extra_local := false      # poussée provoquée par un pincement ou un effeuillage : seuls les bourgeons libérés partent
 const DEFOL_REGROW := 4       # semaines sans feuilles après un effeuillage
 const GROW_WEEKS := 3.0       # durée d'allongement d'une pousse (écart entre deux poussées)
 const DIEBACK_WEEK := 35      # fin d'été : bilan de lumière des branches
@@ -265,6 +266,7 @@ func step_week() -> void:
 	if week == extra_flush:
 		_flush(0.6)
 		extra_defol = false
+		extra_local = false
 	if w == DIEBACK_WEEK:
 		_dieback()
 	if w == 0:
@@ -411,6 +413,13 @@ func health() -> float:
 	return reserve / maxf(roots, 0.001)
 
 
+## Forme du moment (étape 28) : réserves plus ce que capte le feuillage, rapportés aux racines. En été les
+## réserves sont basses (les poussées les ont dépensées) même sur un arbre vigoureux : c'est la forme qui
+## dit si un mekiri ou un effeuillage est supportable.
+func vigor_now() -> float:
+	return (reserve + segs[0].light) / maxf(roots, 0.001)
+
+
 ## Rempotage : nouveau pot (litres) et part des racines coupées. Hors fin d'hiver, l'arbre souffre.
 ## Renvoie un message pour le joueur.
 func repot(volume: float, cut: float) -> String:
@@ -453,6 +462,7 @@ func pinch(i: int) -> String:
 	var wk := week % 52
 	if wk >= 12 and wk <= 30 and (extra_flush <= week):
 		extra_flush = week + 2 + rng.randi() % 2
+		extra_local = true
 	return "Pincée : les bourgeons restants partiront dans 2 à 3 semaines."
 
 
@@ -467,7 +477,7 @@ func defoliate(only := PackedInt32Array()) -> String:
 	var wk := week % 52
 	if wk < 21 or wk > 27:
 		return "L'effeuillage se fait au repos du milieu de l'été, de fin mai à début juillet."
-	if health() < 0.6:
+	if vigor_now() < 0.8:
 		return "Arbre trop faible pour l'effeuillage : laisse-le reprendre des forces."
 	var lst := only
 	if lst.is_empty():
@@ -495,6 +505,7 @@ func defoliate(only := PackedInt32Array()) -> String:
 	reserve = maxf(0.0, reserve - 0.4 * lost)
 	extra_flush = week + DEFOL_REGROW - 1 + rng.randi() % 2
 	extra_defol = true
+	extra_local = true
 	_basipetal()
 	return ("Effeuillé" if only.is_empty() else "Branche effeuillée (feuilles du bout gardées)") + \
 			" : nouvelles feuilles, plus petites, dans 3 à 4 semaines."
@@ -520,7 +531,7 @@ func mekiri() -> String:
 	var wk := week % 52
 	if wk < 20 or wk > 28:
 		return "Le mekiri se fait quand les chandelles ont fini de pousser : fin mai à début juillet."
-	if health() < 0.6:
+	if vigor_now() < 0.8:
 		return "Arbre trop faible pour le mekiri : laisse-le reprendre des forces cette année."
 	var cs := candles()
 	var n := 0
@@ -862,6 +873,10 @@ func _grow() -> void:
 		# Démarre avec une probabilité égale à sa vigueur (sous 1 : rameau court).
 		# Pin, poussée d'été : seuls les bourgeons très vigoureux (ou nés d'une coupe de chandelle) partent.
 		var summer := whorl > 0 and flush_now < 1.0 and not s.forced
+		if extra_local and s.release <= 1.0:
+			s.v_term = 0.0
+			s.v_lat = 0.0
+			continue  # poussée provoquée : seuls les bourgeons libérés (pincés, effeuillés) partent
 		if s.term_bud and (s.v_term >= 1.0 if summer else s.v_term + rng.randf() >= 1.0):
 			var d := s.end - s.start
 			if s.relay:  # repart du bourgeon latéral : l'axe fait un coude

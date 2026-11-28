@@ -53,7 +53,7 @@ func _techniques() -> String:
 					_pinch_all(sim)
 				if mode == "effeuillé" and y >= 1 and wk == 24:
 					sim.defoliate()
-				if y == 4 and wk == 34:
+				if y == 4 and wk == 37:  # après le remplissage des réserves de fin d'été
 					out += _stats(sim, mode)
 	return out
 
