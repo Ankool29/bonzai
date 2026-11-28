@@ -132,7 +132,7 @@ static func set_time(mat: ShaderMaterial, time: float, t_start: float, t_end: fl
 
 
 static func bark_material(s: TreeSim) -> ShaderMaterial:
-	var mat := toon(2 if s.leaf_years > 0 else [1, 4, 6][s.leaf_shape], Color.WHITE, true, 1)  # écorce selon l'espèce
+	var mat := toon(2 if s.whorl > 0 else [1, 4, 6, 7][s.leaf_shape], Color.WHITE, true, 1)  # écorce selon l'espèce
 	for k in 4:
 		mat.set_shader_parameter(["tone1", "tone2", "tone3", "fissure"][k], s.bark_colors[k])
 	mat.set_shader_parameter("young_color", s.young_color)
@@ -593,7 +593,10 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 
 	if sim.leaf_years > 0:
 		var gone := s.born + sim.leaf_years * 52.0
 		if gone >= t0:
-			_needles(s, h, weak, selected, gone)
+			if sim.leaf_shape == 3:
+				_scales(s, h, weak, selected, gone)
+			else:
+				_needles(s, h, weak, selected, gone)
 		return
 	var b := s.born if born < 0.0 else born
 	var shrink := 1.0
@@ -781,6 +784,53 @@ func _needles(s: TreeSim.Seg, h: float, weak: bool, selected: bool, gone: float)
 					# l'aiguille pousse quand la pousse atteint son niveau, depuis sa base
 					nc0.append_array([s.born + s.grow_time * (k + 0.5) / pairs, s.grow_time + 3.0, gone, 0.0])  # s'allonge après la chandelle
 					nc1.append_array([p.x, p.y, p.z, 0.0])
+
+
+## Genévrier (étape 31) : au bout de chaque entre-nœud feuillé, un cordon d'écailles et deux petits cordons
+## latéraux (les paires croisées viennent des bourgeons opposés). Après un stress : aiguilles juvéniles par trois,
+## écartées, bleutées. Dans le maillage des aiguilles ; le cordon pousse quand la pousse atteint le nœud.
+func _scales(s: TreeSim.Seg, h: float, weak: bool, selected: bool, gone: float) -> void:
+	var d := (s.end - s.start).normalized()
+	var a := _perp(d)
+	var b := d.cross(a)
+	var r := a * cos(s.phase) + b * sin(s.phase)
+	var born := s.born + s.grow_time
+	if s.juv:
+		for k in 3:
+			var q := a * cos(s.phase + k * TAU / 3.0) + b * sin(s.phase + k * TAU / 3.0)
+			var col := Color(0.3, 0.48, 0.42) if (k + int(h * 5.0)) % 2 == 0 else Color(0.38, 0.56, 0.5)
+			_ribbon(s.end, s.end + (d * 0.4 + q).normalized() * (0.008 + 0.004 * h), 0.0005, 0.0001, col, col.lightened(0.2), born, gone, weak, selected)
+		return
+	var young := t - s.born < 52.0
+	var c0: Color = sim.leaf_colors[1]
+	var c1: Color = sim.leaf_colors[0] if young else sim.leaf_colors[1].lightened(0.15)
+	var l := sim.foliage_size * (0.7 + 0.6 * h) * clampf(s.size_k, 0.6, 1.3)
+	var dir := (d * 0.75 + r * 0.66).normalized()
+	var tip := s.end + dir * l
+	_ribbon(s.end, tip, 0.0011, 0.0006, c0, c1, born, gone, weak, selected)
+	var side := dir.cross(r).normalized()
+	for sg in [-1.0, 1.0]:
+		var m := s.end + dir * l * 0.5
+		_ribbon(m, m + (dir + side * sg * 0.7).normalized() * l * 0.5, 0.0008, 0.0005, c0.lerp(c1, 0.5), c1, born, gone, weak, selected)
+
+
+## Ruban croisé (deux quadrilatères à angle droit) de p0 à p1, de largeur w0 à w1, couleur c0 à c1.
+func _ribbon(p0: Vector3, p1: Vector3, w0: float, w1: float, c0: Color, c1: Color, born: float, gone: float, weak: bool, selected: bool) -> void:
+	if weak:
+		c0 = c0.lerp(WEAK, 0.6)
+		c1 = c1.lerp(WEAK, 0.6)
+	if selected:
+		c0 = Color(1.0, 0.35, 0.3)
+		c1 = c0
+	var d := (p1 - p0).normalized()
+	var u := _perp(d)
+	for wv in [u, d.cross(u)]:
+		var q := [p0 - wv * w0, p0 + wv * w0, p1 + wv * w1, p1 - wv * w1]
+		for k in [0, 1, 2, 0, 2, 3]:
+			nverts.append(q[k])
+			ncols.append(c0 if k < 2 else c1)
+			nc0.append_array([born, 3.0, gone, 0.0])
+			nc1.append_array([p0.x, p0.y, p0.z, 0.0])
 
 
 func _wood_mesh() -> ArrayMesh:

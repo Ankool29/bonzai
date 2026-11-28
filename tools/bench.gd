@@ -35,6 +35,7 @@ func _init() -> void:
 	out += _techniques()
 	out += _racines()
 	out += _pause()
+	out += _genevrier()
 	print("=== BANC ===")
 	print(out)
 	quit()
@@ -176,3 +177,46 @@ func _pause() -> String:
 		var same := sim.segs.size() == ref.segs.size() and is_equal_approx(sim.segs[0].radius, ref.segs[0].radius) and sim.root.size() == ref.root.size()
 		out += "| %s | %d | %d | %d | %s |\n" % [sp["name"], sim.segs.size(), (t1 - t0) / 1000, (t2 - t1b) / 1000, "oui" if same else "NON"]
 	return out
+
+
+## Étape 31 : genévrier sur 4 ans, libre, fortement taillé ou pincé au début du 4e printemps (semaine 10).
+## Mesuré en été (semaine 30) de la 4e année ; export des segments pour le dessin de vérification.
+func _genevrier() -> String:
+	var out := "\n| genévrier (4 ans, été) | entre-nœuds | hauteur (cm) | pousses de l'année | dont juvéniles | bois nu (> 4 ans) | santé |\n|---|---|---|---|---|---|---|\n"
+	for mode in ["libre", "forte taille", "pincé"]:
+		var sim := TreeSim.new()
+		sim.reset(1, Species.JUNIPER)
+		for w in 52 * 3 + 10:
+			sim.step_week()
+		if mode == "forte taille":
+			while sim.cut_year < 0.45:
+				var best := -1
+				for i in range(1, sim.segs.size()):
+					var sg := sim.segs[i]
+					if sim.segs[sg.parent].lat_child == i and not sg.dry and (best < 0 or sg.light > sim.segs[best].light):
+						best = i
+				if best < 0 or not sim.prune(best):
+					break
+		if mode == "pincé":
+			_pinch_all(sim)
+		for w in 20:
+			sim.step_week()
+		var y0 := floorf(sim.week / 52.0) * 52.0
+		var young := 0
+		var juv := 0
+		var bare := 0
+		for sg in sim.segs:
+			if sg.born >= y0:
+				young += 1
+				if sg.juv:
+					juv += 1
+			elif not sg.dry and sim.week - sg.born >= 52 * 4:
+				bare += 1
+		out += "| %s | %d | %d | %d | %d | %d | %.2f |\n" % [mode, sim.segs.size(), roundi(sim.height() * 100.0), young, juv, bare, sim.health()]
+		var lines := "GENEVRIER %s %d\n" % [mode.replace(" ", "_"), sim.week]
+		for sg in sim.segs:
+			lines += "JSEG %f %f %f %f %f %f %f %f %d %d %f\n" % [sg.start.x, sg.start.y, sg.start.z, sg.end.x, sg.end.y, sg.end.z, sg.radius, sg.born, int(sg.juv), int(sg.dry), sg.phase]
+		print(lines)
+	return out
+
+

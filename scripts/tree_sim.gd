@@ -42,6 +42,7 @@ class Seg:
 	var crack := false       # fêlée en pliant : une chance sur deux de dépérir à la fin de l'été
 	var defol := -1.0        # semaine de l'effeuillage (étape 28), -1 : jamais
 	var kick := false        # bourgeon réveillé par un pincement ou un effeuillage : part à la poussée provoquée
+	var juv := false         # genévrier : pousse en aiguilles juvéniles (née après un stress, étape 31)
 	# recalculés à chaque poussée
 	var light := 0.0
 	var count := 0
@@ -55,7 +56,7 @@ class Seg:
 var name := "Orme de Chine"
 var bark_colors := [Color(0.55, 0.52, 0.47), Color(0.63, 0.6, 0.55), Color(0.62, 0.45, 0.32), Color(0.33, 0.28, 0.24)]
 var foliage_size := 0.02     # longueur d'une feuille avec son pétiole (m)
-var leaf_shape := 0           # 0 : feuille simple (orme), 1 : palmée (érable), 2 : éventail (ginkgo)
+var leaf_shape := 0           # 0 : feuille simple (orme), 1 : palmée (érable), 2 : éventail (ginkgo), 3 : écailles (genévrier)
 var young_color := Color(0.55, 0.47, 0.38)  # rameau de l'année
 var autumn_color := Color(0.82, 0.6, 0.2)
 var bud_color := Color(0.42, 0.28, 0.18)
@@ -96,6 +97,8 @@ var flush_now := 1.0          # force de la poussée en cours (< 1 : poussée d'
 var extra_flush := -1         # semaine de la poussée provoquée (mekiri, pincement, effeuillage)
 var extra_defol := false      # la poussée provoquée suit un effeuillage : « mini-printemps », feuilles plus petites
 var extra_local := false      # poussée provoquée par un pincement ou un effeuillage : seuls les bourgeons libérés partent
+var juv_until := -1           # genévrier (étape 31) : les pousses nées avant cette semaine sont juvéniles
+var cut_year := 0.0           # genévrier : part du feuillage retirée depuis le début de l'année
 var debt := 0.0               # coût des gestes faits quand les réserves sont vides (été) : retenu sur le remplissage de fin d'été
 const DEFOL_REGROW := 4       # semaines sans feuilles après un effeuillage
 const GROW_WEEKS := 3.0       # durée d'allongement d'une pousse (écart entre deux poussées)
@@ -448,6 +451,8 @@ func repot(volume: float, cut: float) -> String:
 	cut = 1.0 - (1.0 - cut) * root.size() / maxf(n, 1.0)
 	roots = minf(roots * (1.0 - cut), volume * ROOTS_PER_LITRE)
 	reserve *= 1.0 - cut * 0.5  # une part des réserves est dans les racines
+	if leaf_shape == 3 and cut > 0.33:
+		_stress()
 	var w := week % 52
 	var txt := "Les racines qui dépassaient du pot ont été coupées. " if outside > 0 else ""
 	if w >= 6 and w <= 14:
@@ -469,6 +474,12 @@ func pinch(i: int) -> String:
 		return "Pousse trop dure pour les doigts : prends les ciseaux."
 	var lost := s.light
 	var j := s.parent
+	if leaf_shape == 3:
+		# genévrier : le pincement n'apporte rien et affaiblit (Bonsai Bark, Shohin Europe) ; mieux vaut les ciseaux
+		prune(i)
+		_spend(0.3 * lost)
+		_stress()
+		return "Pincé : le genévrier s'affaiblit et fera des aiguilles juvéniles. Coupe plutôt aux ciseaux."
 	prune(i)
 	_spend(-0.4 * lost)  # la coupe ordinaire coûte 0,5 ; la pousse tendre seulement 0,1
 	# Les 2 nœuds restants partent tout de suite, sans garder de bonus de vigueur pour les poussées suivantes :
@@ -590,6 +601,8 @@ func select_buds() -> String:
 
 ## Pin : ce que donnera une coupe du segment i. [0 vert, 1 orange, 2 rouge ; conseil]
 func pine_hint(i: int) -> Array:
+	if leaf_shape == 3:
+		return _juniper_hint(i)
 	var s := segs[i]
 	var p := segs[s.parent]
 	var y0 := floorf(week / 52.0) * 52.0
@@ -607,6 +620,32 @@ func pine_hint(i: int) -> Array:
 	return [2, "Bois sans aiguilles : rien ne repartira de cette coupe."]
 
 
+## Genévrier (étape 31) : ce que donnera une coupe du segment i. [0 vert, 1 orange, 2 rouge ; conseil]
+func _juniper_hint(i: int) -> Array:
+	var s := segs[i]
+	var j := s.parent
+	var keep := week - segs[j].born < leaf_years * 52  # feuillage sous la coupe
+	if not keep:
+		for c in [segs[j].main_child, segs[j].lat_child]:
+			if c >= 0 and c != i:
+				for k in subtree(c):
+					if not segs[k].dry and week - segs[k].born < leaf_years * 52:
+						keep = true
+						break
+	if not keep:
+		return [2, "Plus de feuillage en dessous : rien ne repartira, cette partie dépérira."]
+	if cut_year + s.light / maxf(segs[0].light, 0.001) > 0.3:
+		return [1, "Plus de 30 % du feuillage retiré cette année : aiguilles juvéniles à prévoir."]
+	return [0, "Coupe dans le feuillage : sans risque."]
+
+
+## Stress du genévrier (forte taille, racines, pincement) : la prochaine saison de pousse sort en aiguilles
+## juvéniles (Shohin Europe, Björn Bjorholm).
+func _stress() -> void:
+	var y := floori(week / 52.0)
+	juv_until = maxi(juv_until, (y + (1 if week % 52 < 14 else 2)) * 52)
+
+
 ## Coupe le segment i et tout ce qu'il porte. Renvoie false pour la base (on ne coupe pas tout l'arbre).
 const WOUND_MIN := 0.0015      # rayon au-delà duquel une coupe laisse une plaie (3 mm de diamètre)
 
@@ -618,6 +657,11 @@ func prune(i: int, concave := false) -> bool:
 	var j := segs[i].parent
 	var cut := segs[i]
 	_spend(0.5 * cut.light)  # l'énergie investie dans le feuillage coupé est perdue
+	if leaf_shape == 3 and not cut.dry:
+		# genévrier : plus de 30 % du feuillage retiré dans l'année = feuillage juvénile (Bonsai Nut)
+		cut_year += cut.light / maxf(segs[0].light, 0.001)
+		if cut_year > 0.3:
+			_stress()
 	var y0 := floorf(week / 52.0) * 52.0
 	# Pin : chandelle de l'année coupée à sa base = mekiri. Couronne de 0 à 4 entre-nœuds (n + 1 bourgeons)
 	# selon la vigueur de la chandelle retirée ; elle part 2 à 4 semaines plus tard si on coupe de fin mai
@@ -712,6 +756,7 @@ func _flush(strength: float) -> void:
 
 
 func _end_of_year() -> void:
+	cut_year = 0.0
 	for s in segs:
 		s.release = 1.0
 		s.forced = false
@@ -961,6 +1006,7 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 			profile = 0.35 if k == 0 else 0.8 + 0.5 * float(k) / n  # première paire serrée, puis de plus en plus long
 		s.end = p + d * internode * len_v * profile * rng.randf_range(0.8, 1.2)
 		s.radius = tip_radius
+		s.juv = week < juv_until
 		s.grow_time = GROW_WEEKS / n
 		s.born = week + k * s.grow_time  # les entre-nœuds s'allongent l'un après l'autre
 		phase += phyllotaxy + rng.randf_range(-0.2, 0.2)
@@ -988,6 +1034,7 @@ func _shoot(parent_i: int, dir: Vector3, v: float) -> int:
 			t.grow_time = s.grow_time
 			t.born = s.born
 			t.leaf_k = s.leaf_k
+			t.juv = s.juv
 			t.phase = s.phase + PI
 			_set_lateral(t, d)
 			t.lat_q = s.lat_q * rng.randf_range(0.8, 1.2)
