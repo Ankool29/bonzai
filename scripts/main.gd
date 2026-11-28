@@ -49,7 +49,9 @@ var show_leaves := true
 var layout := 0
 var task := -1        # calcul de la période en cours (WorkerThreadPool), -1 si aucun
 var built := []       # résultat du calcul : maillages de fin de période
-var calc_ms := 0      # durée du dernier calcul
+var calc_ms := 0      # durée du dernier calcul (simulation + dessin)
+var sim_ms := 0       # dont simulation
+var vert_k := 0       # milliers de sommets du dernier dessin
 var last_touch := 0   # ms du dernier toucher (cadence d'affichage)
 var anim_t0 := 0.0    # période animée (semaines)
 var anim_t1 := 0.0
@@ -607,8 +609,10 @@ func _advance(weeks: int) -> void:
 	task = WorkerThreadPool.add_task(func():
 		for i in weeks:  # chaque arbre a sa propre date : seul l'arbre ouvert pousse
 			sim.step_week()
+		sim_ms = Time.get_ticks_msec() - start_ms
 		built = TreeMesh.build(sim, PackedInt32Array(), t_start, sim.week, leaves)
-		calc_ms = Time.get_ticks_msec() - start_ms)
+		calc_ms = Time.get_ticks_msec() - start_ms
+		vert_k = TreeMesh.vertex_count(built) / 1000)
 
 
 func _process(delta: float) -> void:
@@ -801,7 +805,8 @@ func _info(time: float) -> void:
 		season = "été"
 	elif w >= 37 and w < 50:
 		season = "automne"
-	var extra := "calcul %d ms" % calc_ms if calc_ms > 0 else "%d segments" % sim.segs.size()
+	# mesure (audit, phase 1) : simulation + dessin, entre-nœuds, sommets dessinés
+	var extra := "sim %d + dessin %d ms · %d seg · %d k sommets" % [sim_ms, calc_ms - sim_ms, sim.segs.size(), vert_k] if calc_ms > 0 else "%d segments" % sim.segs.size()
 	var v := sim.last_vigor
 	if cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0:
 		extra += " · " + sim.wire_state(sim.segs[axis[cut_k]].wire)
