@@ -77,7 +77,7 @@ static func set_time(mat: ShaderMaterial, time: float, t_start: float, t_end: fl
 
 
 static func bark_material(s: TreeSim) -> ShaderMaterial:
-	var mat := toon(2 if s.leaf_years > 0 else (4 if s.leaf_shape == 1 else 1), Color.WHITE, true, 1)
+	var mat := toon(2 if s.leaf_years > 0 else [1, 4, 6][s.leaf_shape], Color.WHITE, true, 1)  # écorce selon l'espèce
 	for k in 4:
 		mat.set_shader_parameter(["tone1", "tone2", "tone3", "fissure"][k], s.bark_colors[k])
 	mat.set_shader_parameter("young_color", s.young_color)
@@ -557,7 +557,7 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 
 	var wmax := l * 0.27
 	var b0 := s.end + dir * 0.003  # base du limbe, au bout du pétiole
 	if not selected:
-		col *= Color(0.24, 0.38, 0.16) if h < 0.5 else Color(0.2, 0.33, 0.15)  # vert sombre légèrement olive
+		col *= sim.leaf_colors[0] if h < 0.5 else sim.leaf_colors[1]  # vert propre à l'espèce
 	var ink := Color(0.08, 0.14, 0.06)
 	var vein := col.darkened(0.25)
 	if sim.leaf_shape == 1:

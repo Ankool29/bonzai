@@ -7,7 +7,7 @@ const ELM := {
 	# limbe 2-6 cm (réduit à ~2 cm en bonsaï), pétiole 2-6 mm ; rameaux de l'année gris-brun, fins ;
 	# écorce desquamée en plaques marbrées gris, olive, beige, orangé ; automne jaune à rouge-violet.
 	# rameaux fins gris-brun ; écorce : voir le mode « lacebark » du shader
-	"bark_colors": [Color(0.55, 0.52, 0.47), Color(0.63, 0.6, 0.55), Color(0.62, 0.45, 0.32), Color(0.33, 0.28, 0.24)],
+	"bark_colors": [Color(0.55, 0.53, 0.48), Color(0.5, 0.52, 0.44), Color(0.66, 0.45, 0.3), Color(0.3, 0.25, 0.21)],
 	"foliage_size": 0.02,
 	# Pousses de l'année (étape 11) : 3 feuilles déjà formées dans le bourgeon, plus selon la vigueur (jusqu'à 8),
 	# entre-nœuds courts (5 à 15 mm), feuilles plus grandes vers le bout, croissance en zigzag (sympodiale).
@@ -48,6 +48,7 @@ const ELM := {
 	"leaf_years": 0,     # caduc
 	"heal": 1.0,          # vitesse de fermeture des plaies
 	"fall_span": 4.0,     # semaines sur lesquelles tombent les feuilles
+	"leaf_colors": [Color(0.24, 0.38, 0.16), Color(0.2, 0.33, 0.15)],  # vert foncé brillant (UF/IFAS)
 	"spur_years": 5.0,    # âge max des rameaux courts qui portent une rosette
 }
 
@@ -98,6 +99,7 @@ const PINE := {
 	"leaf_years": 3,
 	"heal": 1.0,          # vitesse de fermeture des plaies
 	"fall_span": 4.0,     # semaines sur lesquelles tombent les feuilles
+	"leaf_colors": [Color(0.24, 0.38, 0.16), Color(0.2, 0.33, 0.15)],  # inutilisé (aiguilles)
 	"spur_years": 5.0,    # âge max des rameaux courts qui portent une rosette
 }
 
@@ -148,6 +150,7 @@ const MAPLE := {
 	"leaf_years": 0,
 	"heal": 1.0,          # vitesse de fermeture des plaies
 	"fall_span": 4.0,     # semaines sur lesquelles tombent les feuilles
+	"leaf_colors": [Color(0.3, 0.46, 0.18), Color(0.26, 0.4, 0.16)],  # vert tendre
 	"spur_years": 5.0,    # âge max des rameaux courts qui portent une rosette
 }
 
@@ -161,7 +164,7 @@ const GINKGO := {
 	# chute en 1 à 15 jours. EBSCO : rosettes chaque année pendant des années puis allongement possible.
 	# UF/IFAS ST-273 : pousse lente, couronne ouverte. Bonsai Nut : rabattage sévère possible, repart sur le
 	# tronc et rejette du pied ; Phoenix Bonsai : les cicatrices ne se referment pas. Prototype : check/gink.py.
-	"bark_colors": [Color(0.5, 0.47, 0.42), Color(0.58, 0.55, 0.5), Color(0.47, 0.42, 0.36), Color(0.28, 0.24, 0.2)],
+	"bark_colors": [Color(0.6, 0.56, 0.5), Color(0.52, 0.48, 0.43), Color(0.55, 0.5, 0.44), Color(0.33, 0.28, 0.24)],
 	"foliage_size": 0.03,
 	"internode": 0.025,    # pousse longue : feuilles espacées
 	"alpha": 1.4,          # pousse lente (environ la moitié de la hauteur de l'orme à 6 ans, au portage)
@@ -200,6 +203,7 @@ const GINKGO := {
 	"leaf_years": 0,
 	"heal": 0.15,          # plaies qui ne se referment presque pas
 	"fall_span": 1.0,      # chute en quelques jours
+	"leaf_colors": [Color(0.42, 0.56, 0.2), Color(0.36, 0.5, 0.18)],  # vert clair vif dessus comme dessous (Virginia Tech)
 	"spur_years": 12.0,    # rosettes pendant de nombreuses années
 }
 

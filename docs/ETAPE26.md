@@ -1,4 +1,4 @@
-# Étape 26 — Style « encre et papier »
+# Étape 26 — Style « encre et papier » (retiré à l'étape 27)
 
 Validé par le joueur le 28/11/2026 (modèle : estampe moderne à l'encre, soleil rouge ; « on garde les couleurs d'origine »).
 

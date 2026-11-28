@@ -20,7 +20,7 @@ Godot 4.7, GDScript, cible mobile (Galaxy S25 Ultra). Le joueur parle français 
 - `scripts/garden.gd` (`Garden`) : jardin (tous les arbres, chacun sa date et sa place ; seul l'arbre ouvert pousse), sauvegarde dans `user://` (un index + un fichier par arbre).
 - `scripts/exhibit.gd` (`Exhibit`) : jardin d'exposition 3D (décor japonais, 9 emplacements, arbres dessinés gardés en cache).
 - `scripts/main.gd` : scène (soleil et ombres, pot), caméra au doigt, jardin d'exposition ↔ écran de travail, sélection, repère de coupe, outils de taille et fil, boutons ; avance du temps (calcul en fil de calcul puis animation). Scène : `scenes/main.tscn`.
-- `shaders/toon.gdshader` (cel shading, motifs d'écorce et de terre), `shaders/outline.gdshader` (contours), `shaders/anim.gdshaderinc` (animation de la pousse à partir des dates portées par les sommets). Icônes d'interface : `ui/icons` (PixelLab). Ne jamais mettre la clé PixelLab dans le dépôt.
+- `shaders/toon.gdshader` (cel shading, motifs d'écorce par espèce, terre, gravier), `shaders/outline.gdshader` (contours), `shaders/anim.gdshaderinc` (animation de la pousse à partir des dates portées par les sommets). Icônes d'interface : `ui/icons` (PixelLab). Ne jamais mettre la clé PixelLab dans le dépôt.
 
 ## Ailleurs
 - `docs/CONCEPTION.md` : décisions de conception. `docs/ETAPEx.md` : cahiers d'étape. Lis seulement le cahier de l'étape en cours.

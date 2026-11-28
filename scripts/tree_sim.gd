@@ -130,6 +130,7 @@ var planted := 10             # semaine de mise en pot
 var heal := 1.0               # vitesse de fermeture des plaies (ginkgo : presque nulle)
 var fall_span := 4.0          # semaines de chute des feuilles
 var spur_years := 5.0         # âge max des rameaux courts à rosette
+var leaf_colors := [Color(0.24, 0.38, 0.16), Color(0.2, 0.33, 0.15)]  # deux verts du feuillage (étape 27)
 var root := RootSim.new()     # charpente racinaire (étape 23a), sauvegardée à part
 const ROOT_WEEKS := [14, 22, 36]  # poussées de racines : printemps, début et fin d'été
 
@@ -191,7 +192,7 @@ func from_data(d: Dictionary) -> void:
 	for sp in Species.ALL:
 		if sp["name"] == name:
 			species = sp
-			for k in ["bud_size", "bud_color", "bark_colors", "young_color", "autumn_color", "foliage_size", "heal", "fall_span", "spur_years"]:
+			for k in ["bud_size", "bud_color", "bark_colors", "young_color", "autumn_color", "foliage_size", "heal", "fall_span", "spur_years", "leaf_colors"]:
 				if sp.has(k):
 					set(k, sp[k])
 	if not d.has("roots"):  # arbre sauvegardé avant l'étape 17
