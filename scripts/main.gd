@@ -22,6 +22,7 @@ var root_n0 := 0                   # segments de racines au début du rempotage
 var root_cut := 0                  # segments retirés pendant le rempotage
 var pot_mi := MeshInstance3D.new()
 var soil_mi := MeshInstance3D.new()
+var mound_mi := MeshInstance3D.new()  # butte de terre au-dessus du pot (étape 29a)
 var wood_mi := MeshInstance3D.new()
 var leaves_mi := MeshInstance3D.new()
 var hl_wood := MeshInstance3D.new()  # surbrillance de la branche choisie (audit, phase 3), vue à travers le feuillage
@@ -163,6 +164,14 @@ func _add_pot() -> void:
 	soil_mi.position.y = 0.0005
 	soil_mi.material_override = TreeMesh.toon(3, Color(0.5, 0.33, 0.22))
 	world.add_child(soil_mi)
+	var cy := CylinderMesh.new()
+	cy.top_radius = 0.35
+	cy.bottom_radius = 1.0
+	cy.height = 1.0
+	cy.radial_segments = 24
+	mound_mi.mesh = cy
+	mound_mi.material_override = soil_mi.material_override
+	world.add_child(mound_mi)
 
 
 func _size_pot() -> void:
@@ -170,6 +179,12 @@ func _size_pot() -> void:
 	pot_mi.scale = Vector3.ONE * k
 	pot_mi.position.y = -0.026 * k
 	soil_mi.scale = Vector3(k, 1.0, k)
+	# niveau de la terre (étape 29a) : plus bas dans le pot, ou en butte au-dessus
+	var sy := sim.root.soil_y
+	soil_mi.position.y = minf(sy, 0.0) + 0.0005
+	mound_mi.visible = sy > 0.0 and soil_mi.visible
+	mound_mi.scale = Vector3(0.15 * k, maxf(sy, 0.001), 0.1 * k)
+	mound_mi.position.y = sy * 0.5
 
 
 ## Ouvre l'arbre i du jardin.
@@ -337,6 +352,8 @@ func _build_ui() -> void:
 	root_bar.add_child(rb)
 	_button(rb, "Couper la racine", _cut_root, "ciseaux")
 	_button(rb, "Tuile", _toggle_tile, "tuile")
+	_button(rb, "Baisser la terre (racines à nu)", _soil.bind(-0.01), "terre_bas")
+	_button(rb, "Monter la terre (butte)", _soil.bind(0.01), "terre_haut")
 	_button(rb, "Replanter", _show_repot, "rempoter")
 	root_bar.visible = false
 	# Chargement : une feuille qui tourne au milieu de l'écran pendant le calcul de la période.
@@ -375,6 +392,7 @@ func _enter_roots() -> void:
 	root_bar.visible = true
 	pot_mi.visible = false
 	soil_mi.visible = false
+	mound_mi.visible = false
 	_refresh()
 	_say("Touche une racine pour la choisir, puis coupe-la. Idéal : fin février à début avril.")
 	goal_target = Vector3(0, -0.02, 0)
@@ -418,6 +436,12 @@ func _cut_root() -> void:
 	root_cut += sim.root.cut(TreeMesh.root_sel)
 	TreeMesh.root_sel = -1
 	_refresh()
+
+
+## Niveau de la terre (étape 29a), par pas de 1 cm : baisser met des racines à nu, monter les protège en butte.
+func _soil(step: float) -> void:
+	var y := sim.root.set_soil(sim.root.soil_y + step)
+	_say("Terre à %+d cm du collet. %s" % [roundi(y * 100.0), "Les racines au-dessus sont à nu : les fines ne grossiront plus." if y < 0.0 else ("Butte : les racines restent protégées." if y > 0.0 else "Niveau d'origine.")])
 
 
 func _toggle_tile() -> void:
@@ -495,6 +519,7 @@ func _mode() -> void:
 	exhibit.visible = in_garden
 	for n in [wood_mi, leaves_mi, needles_mi, pot_mi, soil_mi, overlay, hl_wood, hl_leaf]:
 		n.visible = not in_garden
+	mound_mi.visible = not in_garden and sim != null and sim.root.soil_y > 0.0
 	panel.visible = not in_garden
 	gauges.visible = not in_garden
 	sun.shadow_enabled = in_garden  # ombres seulement à l'exposition (chauffe)

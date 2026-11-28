@@ -743,7 +743,8 @@ func _end_of_year() -> void:
 	# santé (un arbre sans réserves fait un cerne mince). Les racines grossissent au même rythme que le tronc.
 	var full := clampf((roots / (pot_volume * ROOTS_PER_LITRE) - 0.7) / 0.3, 0.0, 1.0)
 	var rf := minf(1.0, roots / maxf(segs[0].light, 0.01)) * (1.0 - 0.6 * full) * clampf(health(), 0.2, 1.0)
-	root.thicken(_sector_light(), RING_AREA * leaf_area * rf, segs[0].radius)
+	var lost := root.thicken(_sector_light(), RING_AREA * leaf_area * rf, segs[0].radius)
+	roots *= 1.0 - lost  # racines desséchées à l'air (étape 29a)
 	for s in segs:
 		if not s.dry:
 			var old := s.radius

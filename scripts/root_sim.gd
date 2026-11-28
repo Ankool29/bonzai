@@ -28,6 +28,9 @@ var depth := 0.048
 var sp := {}               # réglages de l'espèce : n, tap, dip, branch, mix
 var rng := RandomNumberGenerator.new()  # hasard propre : la pousse des branches ne change pas
 var tile := false
+var soil_y := 0.0          # niveau de la terre (étape 29a) : < 0 terre baissée (racines à nu), > 0 butte
+const SOIL_MIN := -0.03
+const SOIL_MAX := 0.04
 
 
 func setup(species: Dictionary, volume: float) -> void:
@@ -84,7 +87,17 @@ func _free(p: Vector3) -> float:
 
 
 func _inside(p: Vector3, m := 0.004) -> bool:
-	return absf(p.x) < hx - m and absf(p.z) < hz - m and p.y > -depth + m and p.y < 0.0 and not _under_tile(p)
+	return absf(p.x) < hx - m and absf(p.z) < hz - m and p.y > -depth + m and in_soil(p) and not _under_tile(p)
+
+
+## Sous la terre : dans le pot sous le niveau de la terre, ou dans la butte (plus étroite vers le haut).
+func in_soil(p: Vector3) -> bool:
+	if p.y >= soil_y:
+		return false
+	if p.y <= 0.0:
+		return true
+	var f := 1.0 - 0.65 * p.y / soil_y
+	return absf(p.x) < hx * f and absf(p.z) < hz * f
 
 
 func _under_tile(p: Vector3) -> bool:
@@ -99,7 +112,7 @@ func _steer(i: int) -> Vector3:
 	var want := Vector3.DOWN
 	if not (sp["tap"] and i == 0):
 		var far := minf(1.0, Vector2(p1[i].x, p1[i].z).length() / 0.05)
-		var zd: float = -0.002 - (sp["dip"] + 8.0 * order[i]) * 0.001 * far
+		var zd: float = minf(soil_y, 0.0) - 0.002 - (sp["dip"] + 8.0 * order[i]) * 0.001 * far
 		want = (h + Vector3(0, (zd - p1[i].y) / 0.01, 0)).normalized()
 	var j := Vector3(rng.randf_range(-1, 1), rng.randf_range(-0.3, 0.3), rng.randf_range(-1, 1)) * 0.25
 	return _wall(p1[i], d * 0.7 + want * 0.3 + j)
@@ -116,7 +129,7 @@ func _wall(p: Vector3, d: Vector3) -> Vector3:
 			d.z = 0.0
 		if nx.y <= -depth + 0.004 and d.y < 0.0:
 			d.y = 0.0
-		if (nx.y >= 0.0 and d.y > 0.0) or (_under_tile(nx) and d.y < 0.0):
+		if (nx.y >= soil_y - 0.002 and d.y > 0.0) or (_under_tile(nx) and d.y < 0.0):
 			d.y = 0.0
 		d = d.normalized() if d.length() > 0.000001 else Vector3(-p.z, 0, p.x).normalized()
 	return d
@@ -136,8 +149,11 @@ func pulse(roots: float) -> void:
 		w.resize(tips.size())
 		for k in tips.size():
 			var t := tips[k]
-			w[k] = pow(_free(p1[t]), 2.0) / (1.0 + 0.5 * order[t])
+			# une pointe à l'air ne pousse plus (ni latérales) : il lui faut la terre
+			w[k] = pow(_free(p1[t]), 2.0) / (1.0 + 0.5 * order[t]) if in_soil(p1[t]) else 0.0
 			sum += w[k]
+		if sum <= 0.0:
+			break
 		var r := rng.randf() * sum
 		var k := 0
 		while k < tips.size() - 1 and r > w[k]:
@@ -156,10 +172,10 @@ func pulse(roots: float) -> void:
 
 ## Cerne annuel des racines (modèle des tuyaux) : chaque pointe porte la part du houppier de son secteur,
 ## mêlée selon l'intégration de l'espèce ; contreforts près du collet (zone de rapide décroissance).
-func thicken(sector_light: PackedFloat32Array, ring: float, trunk_r: float) -> void:
+func thicken(sector_light: PackedFloat32Array, ring: float, trunk_r: float) -> float:
 	var n := p0.size()
 	if n == 0:
-		return
+		return 0.0
 	var flow := PackedFloat32Array()
 	flow.resize(n)
 	var cnt := PackedInt32Array()
@@ -179,13 +195,37 @@ func thicken(sector_light: PackedFloat32Array, ring: float, trunk_r: float) -> v
 	for i in range(n - 1, -1, -1):
 		if par[i] >= 0:
 			flow[par[i]] += flow[i]
+	# Racines à nu (étape 29a) : une racine épaisse continue de grossir et devient du tronc tant que ses pointes
+	# sont dans la terre ; une racine fine (moins de 2 mm) à l'air se dessèche avec tout ce qu'elle porte ; une
+	# racine sans aucune pointe dans la terre sèche (Bonsai Bark, Bonsai Nut, Fire Escape Bonsai). D'où l'intérêt
+	# de dégager peu à peu, une fois les racines épaissies.
+	var wet := PackedByteArray()
+	wet.resize(n)
+	for i in range(n - 1, -1, -1):
+		if tip[i] and in_soil(p1[i]):
+			wet[i] = 1
+		if wet[i] and par[i] >= 0:
+			wet[par[i]] = 1
+	var dead := {}
 	for i in n:
+		if not wet[i] or (par[i] >= 0 and dead.has(par[i])) or (not in_soil(p1[i]) and rad[i] < 0.001):
+			dead[i] = true
+			continue
 		var zrt := 1.0 + 2.0 * maxf(0.0, 1.0 - Vector2(p0[i].x, p0[i].z).length() / (4.0 * trunk_r))
 		rad[i] = sqrt(rad[i] * rad[i] + ring * flow[i] * zrt / PI)
+	if not dead.is_empty():
+		_remove(dead)
+	return float(dead.size()) / n  # part des racines perdues (racines à nu desséchées)
 
 
 func sector(p: Vector3) -> int:
 	return int(fposmod(atan2(p.z, p.x), TAU) / TAU * SECTORS) % SECTORS
+
+
+## Monte (+) ou baisse (-) la terre ; renvoie le nouveau niveau.
+func set_soil(y: float) -> float:
+	soil_y = clampf(y, maxf(SOIL_MIN, -depth * 0.6), SOIL_MAX)
+	return soil_y
 
 
 ## Coupe la racine i et tout ce qui en part ; 2 ou 3 jeunes racines repartent du bout coupé.
@@ -263,7 +303,7 @@ func _rebuild_occ() -> void:
 
 func to_data() -> Dictionary:
 	return {"p0": p0, "p1": p1, "dir": dir, "par": par, "rad": rad, "tip": tip, "order": order,
-			"seed": rng.seed, "state": rng.state, "tile": tile}
+			"seed": rng.seed, "state": rng.state, "tile": tile, "soil_y": soil_y}
 
 
 func from_data(d: Dictionary) -> void:
@@ -277,4 +317,5 @@ func from_data(d: Dictionary) -> void:
 	rng.seed = d["seed"]
 	rng.state = d["state"]
 	tile = d.get("tile", false)
+	soil_y = d.get("soil_y", 0.0)
 	_rebuild_occ()

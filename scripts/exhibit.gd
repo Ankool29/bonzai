@@ -60,7 +60,16 @@ func show_tree(s: int, sim: TreeSim) -> void:
 	_mesh(n, b, TreeMesh.toon(0, Color(0.55, 0.28, 0.2), true), Vector3(0, -0.026 * kp, 0))
 	var pl := PlaneMesh.new()
 	pl.size = Vector2(0.3, 0.2) * kp
-	_mesh(n, pl, TreeMesh.toon(3, Color(0.5, 0.33, 0.22)), Vector3(0, 0.0005, 0))
+	var sy := sim.root.soil_y  # niveau de la terre (étape 29a)
+	var sm := TreeMesh.toon(3, Color(0.5, 0.33, 0.22))
+	_mesh(n, pl, sm, Vector3(0, minf(sy, 0.0) + 0.0005, 0))
+	if sy > 0.0:
+		var cy := CylinderMesh.new()
+		cy.top_radius = 0.35
+		cy.bottom_radius = 1.0
+		cy.height = 1.0
+		var mm := _mesh(n, cy, sm, Vector3(0, sy * 0.5, 0))
+		mm.scale = Vector3(0.15 * kp, sy, 0.1 * kp)
 	n.set_meta("dy", 0.051 * kp)  # le pot repose sur l'emplacement
 	add_child(n)
 	nodes[s] = n
