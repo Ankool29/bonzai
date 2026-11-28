@@ -99,5 +99,15 @@ func _stats(sim: TreeSim, mode: String, june: float) -> String:
 		mean += x
 	mean /= maxi(shoot.size(), 1)
 	var p90 := shoot[int(shoot.size() * 0.9)] if shoot.size() > 0 else 0.0
+	var nmax := 0
+	var nsum := 0.0
+	var nn := 0
+	for q in sim.segs:
+		if q.born >= y0 and not q.dry:
+			var k := roundi(TreeSim.GROW_WEEKS / q.grow_time)
+			nmax = maxi(nmax, k)
+			nsum += k
+			nn += 1
+	mode += " (entre-nœuds par pousse : moy. %.1f, max %d)" % [nsum / maxi(nn, 1), nmax]
 	return "| %s | %d | %d | %.1f | %.1f / %.1f | %.2f | %.2f / %.2f |\n" % [mode, sim.segs.size(), tips, 1000.0 * len_sum / maxi(n, 1),
 			1000.0 * mean, 1000.0 * p90, leaf_sum / maxi(n, 1), sim.health(), june]
