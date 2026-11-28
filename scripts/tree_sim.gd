@@ -873,10 +873,13 @@ func _grow() -> void:
 		# Démarre avec une probabilité égale à sa vigueur (sous 1 : rameau court).
 		# Pin, poussée d'été : seuls les bourgeons très vigoureux (ou nés d'une coupe de chandelle) partent.
 		var summer := whorl > 0 and flush_now < 1.0 and not s.forced
-		if extra_local and s.release <= 1.0:
-			s.v_term = 0.0
-			s.v_lat = 0.0
-			continue  # poussée provoquée : seuls les bourgeons libérés (pincés, effeuillés) partent
+		if extra_local:  # poussée provoquée : seuls les bourgeons libérés (pincés, effeuillés) partent, presque tous
+			if s.release <= 1.0:
+				s.v_term = 0.0
+				s.v_lat = 0.0
+				continue
+			s.v_term = maxf(s.v_term, 0.6 + rng.randf() * 0.8)
+			s.v_lat = maxf(s.v_lat, 0.6 + rng.randf() * 0.8)
 		if s.term_bud and (s.v_term >= 1.0 if summer else s.v_term + rng.randf() >= 1.0):
 			var d := s.end - s.start
 			if s.relay:  # repart du bourgeon latéral : l'axe fait un coude

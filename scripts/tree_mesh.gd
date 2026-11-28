@@ -583,7 +583,7 @@ func _foliage(s: TreeSim.Seg, weak: bool, selected: bool, turn := 0.0, scale := 
 		if h < 0.4:
 			return
 		col *= Color(1.0, 0.9, 0.55)
-	if sim.health() < 0.25:
+	if sim.vigor_now() < 0.25:
 		col *= Color(1.0, 0.9, 0.55)  # arbre épuisé : feuillage jaunissant
 	if selected:
 		col = Color(1.0, 0.35, 0.3)
