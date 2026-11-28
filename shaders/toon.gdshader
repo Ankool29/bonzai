@@ -2,7 +2,7 @@
 // L'ombre prend la couleur de la lumière ambiante (bleutée), pas du gris.
 // pattern : 0 = couleur de sommet × albedo ; 1 = écorce d'orme (plaques) ; 2 = écorce de pin (fissures) ;
 // 3 = terre (granulés) ; 4 = écorce d'érable (lisse, stries) ; 5 = gravier ratissé (lignes, ondes autour des pierres) ;
-// 6 = écorce de ginkgo (crêtes et sillons). Étape 27 : motifs revus d'après les descriptions botaniques (docs/ETAPE27.md),
+// 6 = écorce de ginkgo (crêtes et sillons) ; 7 = écorce de genévrier (lanières, étape 31). Étape 27 : motifs revus d'après les descriptions botaniques (docs/ETAPE27.md),
 // prototype numpy : check/ecorce2.py. Écorce : UV.x = fraction du tour, UV.y = longueur (m), UV2.x = cellules de 2,5 mm
 // sur le tour ; couleur de sommet rgb = teinte, a = part de teinte unie (rameau de l'année, bois mort, sélection).
 shader_type spatial;
@@ -91,7 +91,7 @@ void vertex() {
 
 void fragment() {
 	vec3 c = albedo.rgb * COLOR.rgb;
-	if (pattern == 1 || pattern == 2 || pattern == 4 || pattern == 6) {
+	if (pattern == 1 || pattern == 2 || pattern == 4 || pattern == 6 || pattern == 7) {
 		vec3 b = tone1;
 		if (pattern == 1) {
 			// orme de Chine : plaques grises irrégulières qui s'exfolient en révélant du cannelle, de l'orangé, du crème,
@@ -141,6 +141,26 @@ void fragment() {
 			}
 			if (h(vec2(floor(UV.x * UV2.x * 3.0), floor(UV.y / 0.0025)), 11.0) < 0.012) {
 				b *= 0.86;
+			}
+		} else if (pattern == 7) {
+			// genévrier : rameau brun-rouge lisse ; puis fissures en long et fines lanières gris-brun qui se
+			// détachent, brun-rouge là où elles sont tombées (Gymnosperm Database, NC State, Virginia Tech)
+			float per = max(floor(UV2.x / 1.5), 1.0);
+			if (UV2.x >= 6.0) {
+				float px = UV.x * per + 0.5 * (vn(vec2(UV.x * per, UV.y / 0.04), per, 4.0) - 0.5);
+				float col = mod(floor(px), per);
+				float f = fract(px);
+				float id = h(vec2(col, 0.0), 7.0);
+				float k = h(vec2(col, floor(UV.y / (0.015 + 0.03 * id) + id * 5.0)), 3.0);
+				b = mix(tone1, tone2, k) * (0.92 + 0.12 * vn(vec2(UV.x * per * 4.0, UV.y / 0.004), per * 4.0, 2.0));
+				if (k > 0.78) {
+					b = tone3;  // lanière tombée : dessous brun-rouge
+				}
+				if (f < 0.1 || f > 0.93) {
+					b = fissure;
+				}
+			} else {
+				b = tone3 * (h(vec2(floor(UV.x * UV2.x * 3.0), floor(UV.y / 0.01)), 5.0) > 0.85 ? 0.85 : 1.0);
 			}
 		} else {
 			// ginkgo : rameau gris-brun clair, lisse et finement strié ; tronc à crêtes verticales entrecroisées,

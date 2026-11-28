@@ -1012,7 +1012,7 @@ func _info(time: float) -> void:
 	var v := sim.last_vigor
 	if cut_k >= 0 and sim.segs[axis[cut_k]].wire > 0:
 		extra += " · " + sim.wire_state(sim.segs[axis[cut_k]].wire)
-	elif cut_k >= 0 and sim.whorl > 0 and tool != 3 and axis[cut_k] > 0:
+	elif cut_k >= 0 and (sim.whorl > 0 or sim.leaf_shape == 3) and tool != 3 and axis[cut_k] > 0:
 		extra = sim.pine_hint(axis[cut_k])[1]
 	vig_bar.value = clampf(v / 2.5, 0.0, 1.0)
 	res_bar.value = clampf(sim.health() / 1.5, 0.0, 1.0)
@@ -1229,8 +1229,8 @@ func _move_cut(pos: Vector2) -> void:
 	if best != cut_k:
 		cut_k = best
 		_draw_overlay()
-		if sim.whorl > 0:
-			_info(sim.week)  # conseil du pin pour le nouvel endroit
+		if sim.whorl > 0 or sim.leaf_shape == 3:
+			_info(anim_now)  # conseil du pin ou du genévrier pour le nouvel endroit
 
 
 ## Repère de coupe (jaune), partie retirée pendant qu'on glisse (rouge), bourgeons de la branche (vert)
@@ -1248,7 +1248,7 @@ func _draw_overlay() -> void:
 	var r := c.radius + 0.004
 	if tool != 3:
 		var mc := Color(1.0, 0.85, 0.1)
-		if sim.whorl > 0 and axis[cut_k] > 0:  # pin : vert, orange ou rouge selon ce que donnera la coupe
+		if (sim.whorl > 0 or sim.leaf_shape == 3) and axis[cut_k] > 0:  # pin, genévrier : vert, orange ou rouge selon ce que donnera la coupe
 			mc = [Color(0.3, 0.85, 0.3), Color(1.0, 0.55, 0.1), Color(0.95, 0.2, 0.12)][sim.pine_hint(axis[cut_k])[0]]
 		for v in [a, b]:
 			im.surface_set_color(mc)

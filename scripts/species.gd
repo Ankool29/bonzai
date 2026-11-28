@@ -207,4 +207,55 @@ const GINKGO := {
 	"spur_years": 12.0,    # rosettes pendant de nombreuses années
 }
 
-const ALL := [ELM, PINE, MAPLE, GINKGO]
+## Genévrier de Chine, Shimpaku (étape 31, docs/ETAPE31.md).
+const JUNIPER := {
+	"name": "Genévrier Shimpaku",
+	# Doc : Ruhr-Universität Bochum (Cupressaceae), University of Illinois, Gymnosperm Database : écailles de 1-3 mm
+	# en paires croisées sur 4 rangs, rameau-cordon de 1 mm ; aiguilles juvéniles 4-12 mm, par trois, écartées,
+	# deux bandes pâles. Virginia Tech : rameau vert plusieurs années puis brun. UNH : pousse toute la saison.
+	# Extension (Penn State, Gardener's Path) : rien ne repart du bois nu. Bonsai Bark, Shohin Europe, Bjorholm :
+	# couper aux ciseaux, ne pas pincer, pas plus de 30 % du feuillage. Écorce brun-rouge en lanières (NC State).
+	"bark_colors": [Color(0.5, 0.4, 0.34), Color(0.44, 0.33, 0.27), Color(0.62, 0.33, 0.2), Color(0.24, 0.16, 0.12)],
+	"foliage_size": 0.008,  # cordons d'écailles
+	"internode": 0.006,
+	"alpha": 1.4,
+	"apical": 0.55,
+	"max_per_flush": 4,
+	"preformed": 2,
+	"spur_len": 0.6,
+	"leaf_area": 0.7,
+	"sympodial": false,
+	"branch_angle": deg_to_rad(45.0),
+	"phyllotaxy": deg_to_rad(90.0),  # paires croisées
+	"w_light": 0.3,
+	"w_up": 0.08,
+	"jitter": 0.08,
+	"shed_ratio": 0.05,     # l'intérieur à l'ombre brunit
+	"bud_life": 52 * 4,     # les bourgeons meurent avec les écailles : rien sur le bois nu
+	"backbud_chance": 0.3,
+	"capacity": 15000,
+	"max_sprouts": 0,
+	# Racines : fasciculées, nombreuses et fines.
+	"root_n": 6,
+	"root_tap": 0,
+	"root_dip": 8.0,
+	"root_branch": 0.4,
+	"root_mix": 0.3,
+	"flushes": {14: 1.0, 19: 0.6, 24: 0.5, 30: 0.4, 36: 0.3},  # pousse continue toute la saison
+	"leaf_shape": 3,
+	"young_color": Color(0.36, 0.5, 0.24),
+	"autumn_color": Color(0.82, 0.6, 0.2),
+	"opposite": true,
+	"fork": false,
+	"bud_color": Color(0.36, 0.5, 0.24),
+	"bud_size": 0.0006,
+	"light_exp": false,
+	"whorl": 0,
+	"leaf_years": 4,
+	"heal": 0.6,
+	"fall_span": 4.0,
+	"leaf_colors": [Color(0.45, 0.62, 0.25), Color(0.2, 0.36, 0.18)],  # pousse de l'année vert vif, puis vert sombre
+	"spur_years": 5.0,
+}
+
+const ALL := [ELM, PINE, MAPLE, GINKGO, JUNIPER]
